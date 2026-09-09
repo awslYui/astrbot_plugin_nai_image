@@ -36,7 +36,7 @@ from .request_parser import parse_generation_command
 from .storage import StateStore
 
 PLUGIN_NAME = "astrbot_plugin_nai_image"
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 
 
 @register(
@@ -234,7 +234,7 @@ class NovelAIImagePlugin(Star):
 
     @filter.command("nai_card_set")
     async def nai_card_set(self, event: AstrMessageEvent):
-        """新增或覆盖个人的人设卡。"""
+        """新增或覆盖全局共享的人设卡。"""
         denied = self._permission_error(event)
         if denied:
             yield event.plain_result(denied)
@@ -249,7 +249,6 @@ class NovelAIImagePlugin(Star):
                 max_tags_length=int(self.config.get("character_card_max_tags_length", 2000)),
             )
             created = await self._store.set_character_card(
-                str(event.get_sender_id()),
                 name,
                 card,
                 max_cards=int(self.config.get("character_card_limit", 50)),
@@ -265,27 +264,27 @@ class NovelAIImagePlugin(Star):
 
     @filter.command("nai_card_list")
     async def nai_card_list(self, event: AstrMessageEvent):
-        """列出个人的人设卡。"""
+        """列出全局共享的人设卡。"""
         denied = self._permission_error(event)
         if denied:
             yield event.plain_result(denied)
             return
-        cards = await self._store.get_character_cards(str(event.get_sender_id()))
+        cards = await self._store.get_character_cards()
         if not cards:
-            yield event.plain_result("ℹ️ 你还没有人设卡")
+            yield event.plain_result("ℹ️ 还没有人设卡")
             return
         names = "\n".join(f"- {name}" for name in sorted(cards))
-        yield event.plain_result(f"你的人设卡（{len(cards)}）：\n{names}")
+        yield event.plain_result(f"全局人设卡（{len(cards)}）：\n{names}")
 
     @filter.command("nai_card_show")
     async def nai_card_show(self, event: AstrMessageEvent):
-        """查看个人的人设卡内容。"""
+        """查看全局共享的人设卡内容。"""
         denied = self._permission_error(event)
         if denied:
             yield event.plain_result(denied)
             return
         name = self._command_body(event.message_str or "", "nai_card_show")
-        cards = await self._store.get_character_cards(str(event.get_sender_id()))
+        cards = await self._store.get_character_cards()
         if not name or name not in cards:
             yield event.plain_result("❌ 未找到该人设卡，用 /nai_card_list 查看名称")
             return
@@ -297,15 +296,13 @@ class NovelAIImagePlugin(Star):
 
     @filter.command("nai_card_delete")
     async def nai_card_delete(self, event: AstrMessageEvent):
-        """删除个人的人设卡。"""
+        """删除全局共享的人设卡。"""
         denied = self._permission_error(event)
         if denied:
             yield event.plain_result(denied)
             return
         name = self._command_body(event.message_str or "", "nai_card_delete")
-        deleted = await self._store.delete_character_card(
-            str(event.get_sender_id()), name
-        )
+        deleted = await self._store.delete_character_card(name)
         yield event.plain_result(
             f"✅ 已删除人设卡：{name}"
             if deleted
@@ -463,9 +460,7 @@ class NovelAIImagePlugin(Star):
             yield event.plain_result(self._missing_token_message())
             return
         try:
-            cards = await self._store.get_character_cards(
-                str(event.get_sender_id())
-            )
+            cards = await self._store.get_character_cards()
             artists = parse_artist_presets(self.config.get("artist_presets", []))
             original_description = self._original_natural_description(
                 event, description
@@ -578,8 +573,7 @@ class NovelAIImagePlugin(Star):
         request: GenerationRequest,
         warnings: list[str],
     ) -> None:
-        user_id = str(event.get_sender_id())
-        cards = await self._store.get_character_cards(user_id)
+        cards = await self._store.get_character_cards()
         structured = is_v4_plus(request.model)
         expansion = expand_character_cards(
             request.prompt, cards, structured=structured
@@ -686,7 +680,7 @@ class NovelAIImagePlugin(Star):
     @staticmethod
     def _help_text() -> str:
         return (
-            "NAI 生图插件 v1.0.3\n\n"
+            "NAI 生图插件 v1.0.4\n\n"
             "自然语言：直接对机器人说‘来张……的图’，或 /nai_nl <描述>\n"
             "文生图：/nai <提示词>\n"
             "图生图：图片 + /nai_i2i <提示词>\n"
