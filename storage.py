@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -76,18 +76,18 @@ class StateStore:
             return dict(self._state["statistics"])
 
     async def write_image(self, user_id: str, data: bytes, extension: str) -> Path:
-        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S_%f")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
         safe_user = "".join(char for char in user_id if char.isalnum())[:32] or "user"
         path = self.output_dir / f"nai_{safe_user}_{timestamp}{extension}"
         await asyncio.to_thread(path.write_bytes, data)
         return path.resolve()
 
     async def cleanup_outputs(self, retention_hours: int) -> int:
-        cutoff = datetime.now(UTC) - timedelta(hours=max(1, retention_hours))
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=max(1, retention_hours))
         removed = 0
         for path in self.output_dir.glob("nai_*"):
             try:
-                modified = datetime.fromtimestamp(path.stat().st_mtime, UTC)
+                modified = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
                 if modified < cutoff:
                     path.unlink()
                     removed += 1
@@ -102,7 +102,7 @@ class StateStore:
         await asyncio.to_thread(os.replace, temp_path, self.state_path)
 
     def _prune_daily(self) -> None:
-        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         attempts = self._state["daily_attempts"]
         self._state["daily_attempts"] = {
             key: value for key, value in attempts.items() if key.startswith(today + ":")
@@ -110,5 +110,4 @@ class StateStore:
 
     @staticmethod
     def _daily_key(user_id: str) -> str:
-        return f"{datetime.now(UTC).strftime('%Y-%m-%d')}:{user_id}"
-
+        return f"{datetime.now(timezone.utc).strftime('%Y-%m-%d')}:{user_id}"
