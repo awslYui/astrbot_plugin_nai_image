@@ -12,6 +12,11 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Image, Plain
 from astrbot.api.star import Context, Star, register
 
+from .artist_presets import (
+    append_prompt_tags,
+    parse_artist_presets,
+    resolve_artist_preset,
+)
 from .character_cards import (
     expand_character_cards,
     parse_card_set_command,
@@ -20,13 +25,18 @@ from .character_cards import (
 from .image_utils import normalize_image_base64
 from .models import GenerationMode, GenerationRequest
 from .nai_client import NaiAPIError, NovelAIClient
+from .natural_language import (
+    NaturalPromptError,
+    NaturalPromptGenerator,
+    merge_prompt_parts,
+)
 from .presets import is_v4_plus, is_v5, model_alias, random_seed
 from .queue_manager import GenerationQueue
 from .request_parser import parse_generation_command
 from .storage import StateStore
 
 PLUGIN_NAME = "astrbot_plugin_nai_image"
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 
 
 @register(
@@ -59,6 +69,7 @@ class NovelAIImagePlugin(Star):
         )
         data_dir = Path("data") / "plugin_data" / PLUGIN_NAME
         self._store = StateStore(data_dir)
+        self._natural_prompt_generator = NaturalPromptGenerator(context, self.config)
         self._last_started: dict[str, float] = {}
         self._cleanup_task: asyncio.Task[None] | None = None
         try:
@@ -85,6 +96,25 @@ class NovelAIImagePlugin(Star):
         async for result in self._parse_and_run(
             event, "nai", GenerationMode.TEXT_TO_IMAGE
         ):
+            yield result
+
+    @filter.command("nai_nl")
+    async def nai_nl(self, event: AstrMessageEvent):
+        """使用自然语言描述生成 NovelAI 图片。"""
+        description = self._command_body(event.message_str or "", "nai_nl")
+        async for result in self._natural_and_run(event, description):
+            yield result
+
+    @filter.llm_tool(name="generate_novelai_image")
+    async def generate_novelai_image(
+        self, event: AstrMessageEvent, description: str
+    ):
+        """根据用户的自然语言要求调用 NovelAI 生成图片；当用户要求画图、来张图、生图或生成插画时使用。
+
+        Args:
+            description(string): 用户完整的生图需求，保留人物名称、动作、场景、构图和画风要求
+        """
+        async for result in self._natural_and_run(event, description):
             yield result
 
     @filter.command("nai_i2i")
@@ -195,12 +225,12 @@ class NovelAIImagePlugin(Star):
 
     @filter.command("nai_health")
     async def nai_health(self, event: AstrMessageEvent):
-        """健康模式在 v1.0.2 暂时禁用。"""
+        """查看当前健康模式状态（暂时禁用）。"""
         denied = self._permission_error(event)
         if denied:
             yield event.plain_result(denied)
             return
-        yield event.plain_result("ℹ️ 健康模式在 v1.0.2 暂时禁用，不会调用 LLM")
+        yield event.plain_result("ℹ️ 健康模式暂时禁用，不会调用 LLM")
 
     @filter.command("nai_card_set")
     async def nai_card_set(self, event: AstrMessageEvent):
@@ -419,6 +449,68 @@ class NovelAIImagePlugin(Star):
                     request.seed,
                 )
 
+    async def _natural_and_run(
+        self, event: AstrMessageEvent, description: str
+    ) -> AsyncIterator[Any]:
+        denied = self._permission_error(event)
+        if denied:
+            yield event.plain_result(denied)
+            return
+        if not bool(self.config.get("natural_language_enabled", True)):
+            yield event.plain_result("❌ 管理员未启用自然语言生图")
+            return
+        if not self._client:
+            yield event.plain_result(self._missing_token_message())
+            return
+        try:
+            cards = await self._store.get_character_cards(
+                str(event.get_sender_id())
+            )
+            artists = parse_artist_presets(self.config.get("artist_presets", []))
+            generated = await self._natural_prompt_generator.generate(
+                description,
+                event,
+                card_names=list(cards),
+                artist_names=list(artists),
+            )
+            natural_config = dict(self.config)
+            natural_config["default_size"] = generated.size
+            natural_config["default_artist_preset"] = ""
+            parsed = parse_generation_command(
+                generated.positive_prompt,
+                command_name="nai",
+                config=natural_config,
+                mode=GenerationMode.TEXT_TO_IMAGE,
+            )
+            parsed.request.negative_prompt = merge_prompt_parts(
+                str(self.config.get("default_negative_prompt", "")),
+                generated.negative_prompt,
+            )
+            selected_artist = resolve_artist_preset(
+                self.config, generated.artist_preset or None
+            )
+            if selected_artist:
+                artist_name, artist_tags = selected_artist
+                parsed.request.prompt = append_prompt_tags(
+                    parsed.request.prompt, artist_tags
+                )
+                parsed.warnings.append(f"已应用画师预设：{artist_name}")
+            if generated.character_cards:
+                parsed.request.prompt = merge_prompt_parts(
+                    *generated.character_cards, parsed.request.prompt
+                )
+            parsed.warnings.insert(0, "已将自然语言转换为 NovelAI 提示词")
+            await self._prepare_prompt(event, parsed.request, parsed.warnings)
+            self._apply_content_rules(parsed.request)
+        except (NaturalPromptError, ValueError) as exc:
+            yield event.plain_result(f"❌ {exc}")
+            return
+
+        async for result in self._run_generation(
+            event, parsed.request, parsed.warnings
+        ):
+            yield result
+
     def _permission_error(self, event: AstrMessageEvent) -> str | None:
         user_id = str(event.get_sender_id())
         owners = self._string_set(self.config.get("owner_ids", []))
@@ -571,7 +663,8 @@ class NovelAIImagePlugin(Star):
     @staticmethod
     def _help_text() -> str:
         return (
-            "NAI 生图插件 v1.0.2\n\n"
+            "NAI 生图插件 v1.0.3\n\n"
+            "自然语言：直接对机器人说‘来张……的图’，或 /nai_nl <描述>\n"
             "文生图：/nai <提示词>\n"
             "图生图：图片 + /nai_i2i <提示词>\n"
             "精准参考：图片 + /nai_ref <提示词>\n"
@@ -580,13 +673,13 @@ class NovelAIImagePlugin(Star):
             "--model v5c|v5f|v45c|v45f|v4c|v4f|v3\n"
             "--size square|portrait|landscape|832x1216\n"
             "--seed 123  --steps 28  --scale 5\n"
-            "--neg \"负面提示词\"  --no-quality\n"
+            "--neg \"负面提示词\"  --artist 预设名  --no-quality\n"
             "图生图：--strength 0.6 --noise 0\n"
             "精准参考：--type character|style|both --strength 1 --fidelity 0\n"
             "画风迁移：--strength 0.6 --info 1\n\n"
             "人设卡：/nai_card_set 名称 正面Tags [--neg 反面Tags]\n"
             "/nai_card_list /nai_card_show /nai_card_delete\n"
-            "健康模式：v1.0.2 暂时禁用\n\n"
+            "健康模式：暂时禁用\n\n"
             "其他：/nai_again /nai_status /nai_cancel /nai_account\n"
             "管理：/nai_test /nai_stats"
         )

@@ -19,6 +19,8 @@
 - 生成请求不自动重试，避免超时后重复消耗额度
 - NovelAI 原生 Character Prompt 人设卡，人物 Tags 与环境提示词分离
 - 用户级人设卡正面/反面 Tags、自动位置和旧版数据兼容
+- 普通对话自然语言生图：自动生成 NovelAI 正面/反面 Tags 并匹配人设卡
+- WebUI 可配置多个命名画师串预设，支持默认预设和按次选择
 
 ## 安装
 
@@ -55,11 +57,30 @@ git clone https://github.com/awslYui/astrbot_plugin_nai_image.git
 4. 保存并重载插件。
 5. 发送 `/nai_test` 测试连接，再发送 `/nai_account` 查看订阅状态。
 
-> 健康模式在 v1.0.2 暂时禁用，生成过程不会调用 LLM。`/nai_health` 仅返回禁用状态。
+> 健康模式仍暂时禁用。v1.0.3 只在自然语言生图时调用 AstrBot 全局 LLM，将描述转换为 NovelAI Tags；`/nai` Tags 指令不会调用 LLM。
 
 AstrBot 的 `secret` 配置只会遮罩 WebUI 显示，不会加密磁盘配置。生产环境推荐使用容器 Secret 或受限环境变量，并限制 AstrBot 配置目录的文件权限。
 
 ## 命令
+
+### 自然语言生图
+
+启用 AstrBot 当前对话模型的工具调用后，可以直接说：
+
+```text
+来张然老师在黑板墙讲课的图
+画一幅小画嘉站在夏日海边的横图
+```
+
+LLM 会调用 `generate_novelai_image` 工具。插件会把当前用户可用的人设卡名称交给全局默认 LLM，生成 NovelAI 正面/反面 Tags、选择构图尺寸，再确定性校验并加载存在的人设卡。人设卡 Tags 仍使用 V4+ 独立 Character Prompt，不会混入环境提示词。
+
+也可以用显式命令走完全相同的流程：
+
+```text
+/nai_nl 来张然老师在黑板墙讲课的图
+```
+
+自然语言功能依赖 AstrBot 已配置可用的全局 LLM；不需要额外填写 LLM API Key。
 
 ### 文生图
 
@@ -67,7 +88,19 @@ AstrBot 的 `secret` 配置只会遮罩 WebUI 显示，不会加密磁盘配置�
 /nai 1girl, solo, pink hair, classroom
 /nai --model v5f --size landscape cinematic landscape, sunset
 /nai --seed 123456 --neg "lowres, bad hands" 1girl, portrait
+/nai --artist sushi 1girl, classroom
 ```
+
+### 画师预设
+
+在插件配置的 `artist_presets` 列表中，每行填写 `预设名=画师Tags`：
+
+```text
+sushi=sushispin, konya_karasue, 0.9::toosaka_asagi, airfish_(lefko_d), ashima_(roro046)
+soft=artist_a, 0.8::artist_b
+```
+
+`default_artist_preset` 填预设名后，每次生图默认追加该画师串；留空则不默认追加。单次生成可用 `--artist sushi` 指定，或用 `--artist none` 临时关闭默认画师串。自然语言中明确说“使用 sushi 预设”时，LLM 也可以选择该预设。
 
 ### 图生图
 
@@ -128,7 +161,7 @@ Character 1 反面：（空或用户填写的 --neg 内容）
 
 ### 健康模式
 
-健康模式在 v1.0.2 暂时禁用。无论旧配置或旧用户状态如何，本版本都不会执行 LLM 审查。
+健康模式暂时禁用。无论旧配置或旧用户状态如何，本版本都不会执行 LLM 健康审查。自然语言提示词转换不属于健康审查。
 
 ### 通用参数
 
@@ -142,6 +175,7 @@ Character 1 反面：（空或用户填写的 --neg 内容）
 | `--sampler` | 采样器 | `--sampler k_euler_ancestral` |
 | `--schedule` | 噪声计划 | `--schedule karras` |
 | `--neg` | 负面提示词 | 多词内容需要加引号 |
+| `--artist` | 画师预设 | `--artist sushi`；`--artist none` 关闭默认预设 |
 | `--no-quality` | 关闭自动质量标签 | 无参数值 |
 
 其他命令：
@@ -149,6 +183,7 @@ Character 1 反面：（空或用户填写的 --neg 内容）
 | 命令 | 功能 |
 |---|---|
 | `/nai_again` | 用新 Seed 重复上次成功的文生图 |
+| `/nai_nl 描述` | 用自然语言生成正反 Tags 并生图 |
 | `/nai_status` | 查看排队状态 |
 | `/nai_cancel` | 取消尚未发送到 NovelAI 的任务 |
 | `/nai_account` | 查看订阅、Anlas 和 V5 用量 |
@@ -178,7 +213,7 @@ Character 1 反面：（空或用户填写的 --neg 内容）
 AstrBot/data/plugin_data/astrbot_plugin_nai_image/
 ```
 
-生成图片默认保留 24 小时后自动删除。`state.json` 保存统计、人设卡和上一次成功的文生图参数，不保存参考图片或图生图原图。旧健康模式状态可能仍保留在文件中，但 v1.0.2 不会读取或执行。
+生成图片默认保留 24 小时后自动删除。`state.json` 保存统计、人设卡和上一次成功的文生图参数，不保存参考图片或图生图原图。旧健康模式状态可能仍保留在文件中，但 v1.0.3 不会读取或执行。
 
 ## 开发与测试
 

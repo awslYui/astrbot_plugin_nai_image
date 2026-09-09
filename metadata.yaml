@@ -1,9 +1,9 @@
 name: astrbot_plugin_nai_image
 display_name: NovelAI 生图
-desc: 通过 NovelAI Diffusion 在 AstrBot 中进行文生图、图生图、Precise Reference 和 Vibe Transfer
+desc: 通过自然语言或 Tags 调用 NovelAI Diffusion 生图，支持人设卡、画师预设、图生图与参考图
 short_desc: 安全、可限流的 NovelAI QQ 生图插件
 author: awslYui
-version: 1.0.2
+version: 1.0.3
 repo: https://github.com/awslYui/astrbot_plugin_nai_image
 astrbot_version: ">=4.16,<5"
 support_platforms:

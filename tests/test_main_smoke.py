@@ -31,6 +31,7 @@ async def test_plugin_entrypoint_imports_and_initializes(monkeypatch, tmp_path) 
     event.AstrMessageEvent = object
     event.filter = types.SimpleNamespace(
         command=_decorator,
+        llm_tool=_decorator,
         permission_type=_decorator,
         PermissionType=types.SimpleNamespace(ADMIN="admin"),
     )

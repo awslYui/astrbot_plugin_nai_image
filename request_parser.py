@@ -3,6 +3,7 @@ from __future__ import annotations
 import shlex
 from typing import Any
 
+from .artist_presets import append_prompt_tags, resolve_artist_preset
 from .models import GenerationMode, GenerationRequest, ParsedCommand, ReferenceType
 from .presets import (
     SUPPORTED_SAMPLERS,
@@ -28,6 +29,7 @@ VALUE_OPTIONS = {
     "--type",
     "--fidelity",
     "--info",
+    "--artist",
 }
 
 
@@ -135,6 +137,16 @@ def parse_generation_command(
     if reference_type_raw not in reference_type_aliases:
         raise ValueError("--type 仅支持 character、style 或 both")
 
+    warnings: list[str] = []
+    selected_artist = resolve_artist_preset(
+        config,
+        str(options["--artist"]) if "--artist" in options else None,
+    )
+    if selected_artist:
+        artist_name, artist_tags = selected_artist
+        prompt = append_prompt_tags(prompt, artist_tags)
+        warnings.append(f"已应用画师预设：{artist_name}")
+
     request = GenerationRequest(
         prompt=prompt,
         negative_prompt=str(
@@ -188,7 +200,6 @@ def parse_generation_command(
             1.0,
         ),
     )
-    warnings: list[str] = []
     if request.width * request.height > 1_048_576:
         warnings.append("当前尺寸超过约一百万像素，可能产生额外 Anlas 消耗")
     return ParsedCommand(request=request, warnings=warnings)
@@ -226,4 +237,3 @@ def _bounded_float(value: Any, name: str, minimum: float, maximum: float) -> flo
     if not minimum <= parsed <= maximum:
         raise ValueError(f"{name} 必须在 {minimum}～{maximum} 之间")
     return parsed
-

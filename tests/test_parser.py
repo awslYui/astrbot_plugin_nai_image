@@ -60,3 +60,33 @@ def test_unknown_option_is_rejected() -> None:
             config=DEFAULT_CONFIG,
             mode=GenerationMode.TEXT_TO_IMAGE,
         )
+
+
+def test_artist_preset_is_appended() -> None:
+    config = {
+        **DEFAULT_CONFIG,
+        "artist_presets": ["sushi=sushispin, 0.9::toosaka_asagi"],
+    }
+    parsed = parse_generation_command(
+        "/nai --artist sushi 1girl, classroom",
+        command_name="nai",
+        config=config,
+        mode=GenerationMode.TEXT_TO_IMAGE,
+    )
+    assert parsed.request.prompt.endswith("sushispin, 0.9::toosaka_asagi")
+    assert parsed.warnings == ["已应用画师预设：sushi"]
+
+
+def test_artist_none_overrides_default() -> None:
+    config = {
+        **DEFAULT_CONFIG,
+        "artist_presets": ["sushi=sushispin"],
+        "default_artist_preset": "sushi",
+    }
+    parsed = parse_generation_command(
+        "/nai --artist none 1girl",
+        command_name="nai",
+        config=config,
+        mode=GenerationMode.TEXT_TO_IMAGE,
+    )
+    assert parsed.request.prompt == "1girl"

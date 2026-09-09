@@ -197,6 +197,31 @@
     "type": "list",
     "default": []
   },
+  "natural_language_enabled": {
+    "description": "启用自然语言生图工具",
+    "type": "bool",
+    "default": true,
+    "hint": "启用后，AstrBot 全局 LLM 可在用户说‘来张图’时调用本插件；也可使用 /nai_nl。"
+  },
+  "natural_prompt_max_length": {
+    "description": "自然语言描述最大字符数",
+    "type": "int",
+    "default": 1000
+  },
+  "artist_presets": {
+    "description": "画师串预设",
+    "type": "list",
+    "default": [
+      "sushi=sushispin, konya_karasue, 0.9::toosaka_asagi, airfish_(lefko_d), ashima_(roro046)"
+    ],
+    "hint": "每行格式：预设名=画师Tags。例如 sushi=sushispin, konya_karasue"
+  },
+  "default_artist_preset": {
+    "description": "默认画师预设名",
+    "type": "string",
+    "default": "",
+    "hint": "留空表示默认不添加画师串；必须与 artist_presets 中等号左侧名称一致。"
+  },
   "character_card_limit": {
     "description": "每位用户最多保存的人设卡数",
     "type": "int",
