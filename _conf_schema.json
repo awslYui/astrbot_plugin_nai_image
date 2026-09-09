@@ -197,43 +197,6 @@
     "type": "list",
     "default": []
   },
-  "health_mode_default": {
-    "description": "健康模式默认状态",
-    "type": "bool",
-    "default": false,
-    "hint": "用户可通过 /nai_health on 或 off 覆盖自己的状态。开启后每次生成会额外调用一次 LLM。"
-  },
-  "health_fail_closed": {
-    "description": "健康审查失败时阻止生成",
-    "type": "bool",
-    "default": true,
-    "hint": "推荐开启，避免 LLM 不可用时绕过审查。"
-  },
-  "health_llm_api_key": {
-    "description": "健康审查 LLM API Key",
-    "type": "string",
-    "default": "",
-    "secret": true,
-    "obvious_hint": true,
-    "hint": "留空则使用当前会话的 AstrBot 全局默认 LLM。"
-  },
-  "health_llm_base_url": {
-    "description": "健康审查 LLM API 地址",
-    "type": "string",
-    "default": "https://api.openai.com/v1",
-    "hint": "填写 OpenAI 兼容 API 的根地址或完整 chat/completions 地址。"
-  },
-  "health_llm_model": {
-    "description": "健康审查 LLM 模型",
-    "type": "string",
-    "default": "gpt-4o-mini",
-    "hint": "仅在填写独立 API Key 时使用。"
-  },
-  "health_llm_timeout": {
-    "description": "健康审查超时时间（秒）",
-    "type": "int",
-    "default": 45
-  },
   "character_card_limit": {
     "description": "每位用户最多保存的人设卡数",
     "type": "int",

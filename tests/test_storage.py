@@ -1,4 +1,5 @@
 import pytest
+from astrbot_plugin_nai_image.character_cards import CharacterCard
 from astrbot_plugin_nai_image.models import GenerationRequest
 from astrbot_plugin_nai_image.storage import StateStore
 
@@ -35,13 +36,16 @@ async def test_store_roundtrip(tmp_path) -> None:
 async def test_character_cards_and_health_mode_roundtrip(tmp_path) -> None:
     store = StateStore(tmp_path)
     assert await store.set_character_card(
-        "123", "小画嘉", "1girl, blue eyes", max_cards=2
+        "123", "小画嘉", CharacterCard("1girl, blue eyes"), max_cards=2
     )
     assert not await store.set_character_card(
-        "123", "小画嘉", "1girl, silver hair", max_cards=2
+        "123",
+        "小画嘉",
+        CharacterCard("1girl, silver hair", "bad hands"),
+        max_cards=2,
     )
     assert await store.get_character_cards("123") == {
-        "小画嘉": "1girl, silver hair"
+        "小画嘉": CharacterCard("1girl, silver hair", "bad hands")
     }
     assert not await store.get_health_mode("123", default=False)
     await store.set_health_mode("123", True)
@@ -50,3 +54,12 @@ async def test_character_cards_and_health_mode_roundtrip(tmp_path) -> None:
     assert await restored.get_health_mode("123", default=False)
     assert await restored.delete_character_card("123", "小画嘉")
     assert await restored.get_character_cards("123") == {}
+
+
+@pytest.mark.asyncio
+async def test_legacy_string_character_card_is_migrated_on_read(tmp_path) -> None:
+    store = StateStore(tmp_path)
+    store._state["character_cards"] = {"123": {"旧卡": "1girl, pink hair"}}
+    assert await store.get_character_cards("123") == {
+        "旧卡": CharacterCard("1girl, pink hair", "")
+    }

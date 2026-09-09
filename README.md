@@ -17,8 +17,8 @@
 - PNG、WebP、JPEG 与 ZIP 响应解析
 - 输入图片验证和过期输出清理
 - 生成请求不自动重试，避免超时后重复消耗额度
-- 可选健康模式：生成前调用 LLM 删除不健康的提示词片段
-- 用户级人设卡：在提示词中写人设名即可自动展开为对应 Tags
+- NovelAI 原生 Character Prompt 人设卡，人物 Tags 与环境提示词分离
+- 用户级人设卡正面/反面 Tags、自动位置和旧版数据兼容
 
 ## 安装
 
@@ -55,15 +55,7 @@ git clone https://github.com/awslYui/astrbot_plugin_nai_image.git
 4. 保存并重载插件。
 5. 发送 `/nai_test` 测试连接，再发送 `/nai_account` 查看订阅状态。
 
-### 健康模式配置
-
-健康模式默认关闭，用户可以执行 `/nai_health on` 开启。每次开启状态下的生成会多调用一次 LLM：
-
-- `health_llm_api_key` 留空：使用当前会话配置的 AstrBot 全局默认 LLM。
-- 填写 `health_llm_api_key`：使用 `health_llm_base_url` 和 `health_llm_model` 指定的 OpenAI 兼容接口。
-- `health_fail_closed=true`：审查不可用或返回无效结果时阻止生成，推荐保持开启。
-
-LLM 只能返回需要删除的 Tag 序号，最终提示词由插件本地确定性删除；审查模型不能新增或改写 Tags。API Key 不要发送到聊天中。
+> 健康模式在 v1.0.2 暂时禁用，生成过程不会调用 LLM。`/nai_health` 仅返回禁用状态。
 
 AstrBot 的 `secret` 配置只会遮罩 WebUI 显示，不会加密磁盘配置。生产环境推荐使用容器 Secret 或受限环境变量，并限制 AstrBot 配置目录的文件权限。
 
@@ -108,33 +100,35 @@ Precise Reference 会使用配置中的 V4.5 参考模型，并可能产生额�
 
 ### 人设卡
 
-人设卡按用户隔离保存。名称可以是中文；设置同名卡会覆盖旧内容。
+人设卡按用户隔离保存。名称可以是中文；设置同名卡会覆盖旧内容。指令不需要竖线，第一个参数是人设名，后面是正面 Tags；反面 Tags 使用可选的 `--neg` 参数。
 
 ```text
-/nai_card_set 小画嘉 | 1girl, solo, blue eyes, silver hair, long hair
+/nai_card_set 小画嘉 1girl, solo, blue eyes, silver hair, long hair
+/nai_card_set 小画嘉 1girl, solo, blue eyes, silver hair --neg bad hands, extra fingers
+/nai_card_set "小画嘉 夏装" 1girl, summer dress, silver hair
 /nai_card_list
 /nai_card_show 小画嘉
 /nai 小画嘉, school uniform, classroom
 /nai_card_delete 小画嘉
 ```
 
-最后一条生图命令会自动展开为：
+反面提示词不填写时会保存为空。包含空格的人设名需要加引号。
+
+对于 V4、V4.5 和 V5，最后一条生图命令会生成独立的人物槽：
 
 ```text
-1girl, solo, blue eyes, silver hair, long hair, school uniform, classroom
+主提示词：character 1, school uniform, classroom
+Character 1 正面：1girl, solo, blue eyes, silver hair, long hair
+Character 1 反面：（空或用户填写的 --neg 内容）
 ```
 
-为避免歧义，人设卡名称不能包含逗号、竖线或换行。当多个名称同时命中时，较长名称优先替换。
+人物 Tags 不会再直接拼进场景提示词，从而减少对背景、构图和环境的污染。多个人设会建立多个 Character Prompt 并自动横向分配位置；V5 最多 22 个，V4/V4.5 最多 6 个。V3 不支持该功能，因此会自动退回原来的行内展开方式。
+
+旧版 v1.0.1 已保存的人设卡会自动读取为正面 Tags，反面 Tags 留空，无需重新创建。
 
 ### 健康模式
 
-```text
-/nai_health on
-/nai_health status
-/nai_health off
-```
-
-健康审查发生在人设卡展开之后，仅处理正向提示词；负面提示词不会被清理。开启后如果所有正向提示词都被移除，本次生成会被阻止。
+健康模式在 v1.0.2 暂时禁用。无论旧配置或旧用户状态如何，本版本都不会执行 LLM 审查。
 
 ### 通用参数
 
@@ -159,8 +153,8 @@ Precise Reference 会使用配置中的 V4.5 参考模型，并可能产生额�
 | `/nai_cancel` | 取消尚未发送到 NovelAI 的任务 |
 | `/nai_account` | 查看订阅、Anlas 和 V5 用量 |
 | `/nai_help` | 查看帮助 |
-| `/nai_health on\|off\|status` | 管理个人健康模式 |
-| `/nai_card_set 名称 \| tags` | 新增或覆盖个人的人设卡 |
+| `/nai_health` | 查看健康模式禁用状态 |
+| `/nai_card_set 名称 正面Tags [--neg 反面Tags]` | 新增或覆盖个人的人设卡 |
 | `/nai_card_list` | 列出个人的人设卡 |
 | `/nai_card_show 名称` | 查看人设卡内容 |
 | `/nai_card_delete 名称` | 删除人设卡 |
@@ -184,7 +178,7 @@ Precise Reference 会使用配置中的 V4.5 参考模型，并可能产生额�
 AstrBot/data/plugin_data/astrbot_plugin_nai_image/
 ```
 
-生成图片默认保留 24 小时后自动删除。`state.json` 保存统计、健康模式状态、人设卡和上一次成功的文生图参数，不保存参考图片或图生图原图。
+生成图片默认保留 24 小时后自动删除。`state.json` 保存统计、人设卡和上一次成功的文生图参数，不保存参考图片或图生图原图。旧健康模式状态可能仍保留在文件中，但 v1.0.2 不会读取或执行。
 
 ## 开发与测试
 

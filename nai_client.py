@@ -7,7 +7,13 @@ from typing import Any
 
 import httpx
 
-from .models import AccountInfo, GeneratedImage, GenerationMode, GenerationRequest
+from .models import (
+    AccountInfo,
+    CharacterPrompt,
+    GeneratedImage,
+    GenerationMode,
+    GenerationRequest,
+)
 from .presets import is_v4_plus
 
 
@@ -47,7 +53,7 @@ class NovelAIClient:
             headers={
                 "Authorization": f"Bearer {self._token}",
                 "Accept": "application/zip, image/png, image/webp, application/json",
-                "User-Agent": "astrbot-plugin-nai-image/1.0.1",
+                "User-Agent": "astrbot-plugin-nai-image/1.0.2",
             },
         )
 
@@ -182,10 +188,26 @@ def build_generation_payload(request: GenerationRequest) -> dict[str, Any]:
         parameters["prefer_brownian"] = True
 
     if is_v4_plus(request.model):
-        parameters["use_coords"] = False
-        parameters["v4_prompt"] = _structured_prompt(request.prompt)
+        use_coords = len(request.character_prompts) > 1
+        parameters["use_coords"] = use_coords
+        parameters["characterPrompts"] = [
+            {
+                "prompt": item.positive,
+                "uc": item.negative,
+                "center": {"x": item.x, "y": item.y},
+            }
+            for item in request.character_prompts
+        ]
+        parameters["v4_prompt"] = _structured_prompt(
+            request.prompt,
+            request.character_prompts,
+            use_coords=use_coords,
+        )
         parameters["v4_negative_prompt"] = _structured_prompt(
-            request.negative_prompt
+            request.negative_prompt,
+            request.character_prompts,
+            negative=True,
+            use_coords=use_coords,
         )
 
     action = "generate"
@@ -238,10 +260,23 @@ def build_generation_payload(request: GenerationRequest) -> dict[str, Any]:
     }
 
 
-def _structured_prompt(text: str) -> dict[str, Any]:
+def _structured_prompt(
+    text: str,
+    characters: list[CharacterPrompt] | None = None,
+    *,
+    negative: bool = False,
+    use_coords: bool = False,
+) -> dict[str, Any]:
+    char_captions = [
+        {
+            "char_caption": item.negative if negative else item.positive,
+            "centers": [{"x": item.x, "y": item.y}],
+        }
+        for item in characters or []
+    ]
     return {
-        "caption": {"base_caption": text, "char_captions": []},
-        "use_coords": False,
+        "caption": {"base_caption": text, "char_captions": char_captions},
+        "use_coords": use_coords,
         "use_order": True,
     }
 

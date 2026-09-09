@@ -12,18 +12,21 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Image, Plain
 from astrbot.api.star import Context, Star, register
 
-from .character_cards import expand_character_cards, validate_card
-from .health_review import HealthPromptReviewer, HealthReviewError
+from .character_cards import (
+    expand_character_cards,
+    parse_card_set_command,
+    validate_card,
+)
 from .image_utils import normalize_image_base64
 from .models import GenerationMode, GenerationRequest
 from .nai_client import NaiAPIError, NovelAIClient
-from .presets import model_alias, random_seed
+from .presets import is_v4_plus, is_v5, model_alias, random_seed
 from .queue_manager import GenerationQueue
 from .request_parser import parse_generation_command
 from .storage import StateStore
 
 PLUGIN_NAME = "astrbot_plugin_nai_image"
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 
 
 @register(
@@ -56,7 +59,6 @@ class NovelAIImagePlugin(Star):
         )
         data_dir = Path("data") / "plugin_data" / PLUGIN_NAME
         self._store = StateStore(data_dir)
-        self._health_reviewer = HealthPromptReviewer(context, self.config)
         self._last_started: dict[str, float] = {}
         self._cleanup_task: asyncio.Task[None] | None = None
         try:
@@ -75,7 +77,6 @@ class NovelAIImagePlugin(Star):
                 pass
         if self._client:
             await self._client.close()
-        await self._health_reviewer.close()
         logger.info("[NAI生图] 插件已停止")
 
     @filter.command("nai")
@@ -194,32 +195,12 @@ class NovelAIImagePlugin(Star):
 
     @filter.command("nai_health")
     async def nai_health(self, event: AstrMessageEvent):
-        """开启、关闭或查看个人健康模式。"""
+        """健康模式在 v1.0.2 暂时禁用。"""
         denied = self._permission_error(event)
         if denied:
             yield event.plain_result(denied)
             return
-        user_id = str(event.get_sender_id())
-        action = self._command_body(event.message_str or "", "nai_health").lower()
-        default = bool(self.config.get("health_mode_default", False))
-        if action in {"on", "开启", "开"}:
-            await self._store.set_health_mode(user_id, True)
-            yield event.plain_result("✅ 健康模式已开启，生成前会使用 LLM 删除不健康 Tags")
-        elif action in {"off", "关闭", "关"}:
-            await self._store.set_health_mode(user_id, False)
-            yield event.plain_result("✅ 健康模式已关闭")
-        elif action in {"", "status", "状态"}:
-            enabled = await self._store.get_health_mode(user_id, default=default)
-            source = (
-                "自定义 LLM"
-                if str(self.config.get("health_llm_api_key", "")).strip()
-                else "AstrBot 全局 LLM"
-            )
-            yield event.plain_result(
-                f"健康模式：{'开启' if enabled else '关闭'}\n审查模型来源：{source}"
-            )
-        else:
-            yield event.plain_result("❌ 用法：/nai_health on|off|status")
+        yield event.plain_result("ℹ️ 健康模式在 v1.0.2 暂时禁用，不会调用 LLM")
 
     @filter.command("nai_card_set")
     async def nai_card_set(self, event: AstrMessageEvent):
@@ -229,20 +210,18 @@ class NovelAIImagePlugin(Star):
             yield event.plain_result(denied)
             return
         body = self._command_body(event.message_str or "", "nai_card_set")
-        name, separator, tags = body.partition("|")
-        if not separator:
-            yield event.plain_result("❌ 用法：/nai_card_set 人设名 | tag1, tag2, tag3")
-            return
         try:
-            name, tags = validate_card(
+            name, positive, negative = parse_card_set_command(body)
+            name, card = validate_card(
                 name,
-                tags,
+                positive,
+                negative,
                 max_tags_length=int(self.config.get("character_card_max_tags_length", 2000)),
             )
             created = await self._store.set_character_card(
                 str(event.get_sender_id()),
                 name,
-                tags,
+                card,
                 max_cards=int(self.config.get("character_card_limit", 50)),
             )
         except ValueError as exc:
@@ -250,7 +229,8 @@ class NovelAIImagePlugin(Star):
             return
         yield event.plain_result(
             f"✅ 已{'新增' if created else '更新'}人设卡：{name}\n"
-            "以后在生图提示词中写入该名称即可自动展开。"
+            f"反面提示词：{'已设置' if card.negative else '留空'}\n"
+            "以后在生图提示词中写入该名称即可调用 Character Prompt。"
         )
 
     @filter.command("nai_card_list")
@@ -279,7 +259,11 @@ class NovelAIImagePlugin(Star):
         if not name or name not in cards:
             yield event.plain_result("❌ 未找到该人设卡，用 /nai_card_list 查看名称")
             return
-        yield event.plain_result(f"人设卡：{name}\n{cards[name]}")
+        card = cards[name]
+        yield event.plain_result(
+            f"人设卡：{name}\n正面：{card.positive}\n"
+            f"反面：{card.negative or '（空）'}"
+        )
 
     @filter.command("nai_card_delete")
     async def nai_card_delete(self, event: AstrMessageEvent):
@@ -478,7 +462,12 @@ class NovelAIImagePlugin(Star):
             for term in self.config.get("blocked_terms", [])
             if str(term).strip()
         ]
-        combined = f"{request.prompt}\n{request.negative_prompt}".lower()
+        character_text = "\n".join(
+            f"{item.positive}\n{item.negative}" for item in request.character_prompts
+        )
+        combined = (
+            f"{request.prompt}\n{request.negative_prompt}\n{character_text}"
+        ).lower()
         hit = next((term for term in blocked_terms if term in combined), None)
         if hit:
             raise ValueError("提示词包含管理员禁用的内容")
@@ -491,32 +480,36 @@ class NovelAIImagePlugin(Star):
     ) -> None:
         user_id = str(event.get_sender_id())
         cards = await self._store.get_character_cards(user_id)
-        expansion = expand_character_cards(request.prompt, cards)
+        structured = is_v4_plus(request.model)
+        expansion = expand_character_cards(
+            request.prompt, cards, structured=structured
+        )
         request.prompt = expansion.prompt
+        request.character_prompts = expansion.character_prompts
         if expansion.matched_names:
-            warnings.append("已展开人设卡：" + "、".join(expansion.matched_names))
+            if structured:
+                max_characters = 22 if is_v5(request.model) else 6
+                if len(expansion.character_prompts) > max_characters:
+                    raise ValueError(
+                        f"当前模型最多支持 {max_characters} 个 Character Prompt"
+                    )
+                warnings.append(
+                    "已加载独立 Character Prompt："
+                    + "、".join(expansion.matched_names)
+                )
+            else:
+                warnings.append(
+                    "V3 不支持 Character Prompt，已行内展开："
+                    + "、".join(expansion.matched_names)
+                )
 
         max_length = int(self.config.get("max_prompt_length", 6000))
-        if len(request.prompt) > max_length:
-            raise ValueError(f"人设卡展开后的提示词不能超过 {max_length} 个字符")
-
-        enabled = await self._store.get_health_mode(
-            user_id, default=bool(self.config.get("health_mode_default", False))
+        total_length = len(request.prompt) + sum(
+            len(item.positive) + len(item.negative)
+            for item in request.character_prompts
         )
-        if not enabled:
-            return
-        try:
-            review = await self._health_reviewer.review(request.prompt, event)
-        except HealthReviewError as exc:
-            if bool(self.config.get("health_fail_closed", True)):
-                raise ValueError(f"健康审查失败：{exc}") from exc
-            warnings.append(f"健康审查不可用，已按原提示词继续：{exc}")
-            return
-        request.prompt = review.prompt
-        if review.removed_segments:
-            warnings.append(
-                f"健康模式已删除 {len(review.removed_segments)} 个不健康提示词片段"
-            )
+        if total_length > max_length:
+            raise ValueError(f"提示词与人设卡总长度不能超过 {max_length} 个字符")
 
     @staticmethod
     async def _get_message_image_b64(event: AstrMessageEvent) -> str | None:
@@ -578,7 +571,7 @@ class NovelAIImagePlugin(Star):
     @staticmethod
     def _help_text() -> str:
         return (
-            "NAI 生图插件 v1.0.1\n\n"
+            "NAI 生图插件 v1.0.2\n\n"
             "文生图：/nai <提示词>\n"
             "图生图：图片 + /nai_i2i <提示词>\n"
             "精准参考：图片 + /nai_ref <提示词>\n"
@@ -591,9 +584,9 @@ class NovelAIImagePlugin(Star):
             "图生图：--strength 0.6 --noise 0\n"
             "精准参考：--type character|style|both --strength 1 --fidelity 0\n"
             "画风迁移：--strength 0.6 --info 1\n\n"
-            "人设卡：/nai_card_set 名称 | tags\n"
+            "人设卡：/nai_card_set 名称 正面Tags [--neg 反面Tags]\n"
             "/nai_card_list /nai_card_show /nai_card_delete\n"
-            "健康模式：/nai_health on|off|status\n\n"
+            "健康模式：v1.0.2 暂时禁用\n\n"
             "其他：/nai_again /nai_status /nai_cancel /nai_account\n"
             "管理：/nai_test /nai_stats"
         )

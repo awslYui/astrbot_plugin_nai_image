@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from .character_cards import CharacterCard
 from .models import GenerationRequest
 
 
@@ -77,19 +78,29 @@ class StateStore:
         async with self._lock:
             return dict(self._state["statistics"])
 
-    async def get_character_cards(self, user_id: str) -> dict[str, str]:
+    async def get_character_cards(self, user_id: str) -> dict[str, CharacterCard]:
         async with self._lock:
             cards = self._state["character_cards"].get(user_id, {})
             if not isinstance(cards, dict):
                 return {}
-            return {
-                str(name): str(tags)
-                for name, tags in cards.items()
-                if str(name).strip() and str(tags).strip()
-            }
+            result: dict[str, CharacterCard] = {}
+            for raw_name, raw_card in cards.items():
+                name = str(raw_name).strip()
+                if not name:
+                    continue
+                if isinstance(raw_card, str) and raw_card.strip():
+                    result[name] = CharacterCard(positive=raw_card.strip())
+                elif isinstance(raw_card, dict):
+                    positive = str(
+                        raw_card.get("positive", raw_card.get("tags", ""))
+                    ).strip()
+                    negative = str(raw_card.get("negative", "")).strip()
+                    if positive:
+                        result[name] = CharacterCard(positive, negative)
+            return result
 
     async def set_character_card(
-        self, user_id: str, name: str, tags: str, *, max_cards: int
+        self, user_id: str, name: str, card: CharacterCard, *, max_cards: int
     ) -> bool:
         async with self._lock:
             user_cards = self._state["character_cards"].setdefault(user_id, {})
@@ -99,7 +110,10 @@ class StateStore:
             is_new = name not in user_cards
             if is_new and len(user_cards) >= max(1, max_cards):
                 raise ValueError(f"每位用户最多保存 {max(1, max_cards)} 张人设卡")
-            user_cards[name] = tags
+            user_cards[name] = {
+                "positive": card.positive,
+                "negative": card.negative,
+            }
             await self._save_locked()
             return is_new
 

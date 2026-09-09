@@ -5,6 +5,7 @@ import zipfile
 import httpx
 import pytest
 from astrbot_plugin_nai_image.models import (
+    CharacterPrompt,
     GenerationMode,
     GenerationRequest,
     ReferenceType,
@@ -45,6 +46,39 @@ def test_build_v5_payload() -> None:
     assert payload["parameters"]["v4_prompt"]["caption"]["base_caption"] == (
         "1girl, solo"
     )
+
+
+def test_build_character_prompt_payload() -> None:
+    payload = build_generation_payload(
+        request(
+            prompt="character 1, classroom",
+            character_prompts=[
+                CharacterPrompt(
+                    positive="1girl, silver hair",
+                    negative="bad hands",
+                    x=0.5,
+                    y=0.5,
+                )
+            ],
+        )
+    )
+    params = payload["parameters"]
+    assert params["characterPrompts"] == [
+        {
+            "prompt": "1girl, silver hair",
+            "uc": "bad hands",
+            "center": {"x": 0.5, "y": 0.5},
+        }
+    ]
+    assert params["v4_prompt"]["caption"]["char_captions"] == [
+        {
+            "char_caption": "1girl, silver hair",
+            "centers": [{"x": 0.5, "y": 0.5}],
+        }
+    ]
+    assert params["v4_negative_prompt"]["caption"]["char_captions"][0][
+        "char_caption"
+    ] == "bad hands"
 
 
 def test_build_img2img_payload() -> None:
@@ -138,4 +172,3 @@ async def test_account_info_parsing() -> None:
     assert info.tier_name == "Opus"
     assert info.anlas == 1050
     assert info.v5_usage_percent == 82
-

@@ -19,6 +19,14 @@ class ReferenceType(str, Enum):
 
 
 @dataclass(slots=True)
+class CharacterPrompt:
+    positive: str
+    negative: str = ""
+    x: float = 0.5
+    y: float = 0.5
+
+
+@dataclass(slots=True)
 class GenerationRequest:
     prompt: str
     negative_prompt: str
@@ -41,6 +49,7 @@ class GenerationRequest:
     reference_fidelity: float = 0.0
     vibe_strength: float = 0.6
     vibe_information: float = 1.0
+    character_prompts: list[CharacterPrompt] = field(default_factory=list)
 
     def safe_dict(self) -> dict[str, Any]:
         """Return a persistable request without user-supplied image bytes."""
@@ -58,6 +67,11 @@ class GenerationRequest:
         copied["reference_type"] = ReferenceType(
             copied.get("reference_type", "character&style")
         )
+        copied["character_prompts"] = [
+            CharacterPrompt(**item)
+            for item in copied.get("character_prompts", [])
+            if isinstance(item, dict)
+        ]
         return cls(**copied)
 
 
@@ -83,4 +97,3 @@ class AccountInfo:
 class ParsedCommand:
     request: GenerationRequest
     warnings: list[str] = field(default_factory=list)
-

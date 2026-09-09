@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.2 - 2026-09-09
+
+- 人设卡改用 NovelAI V4+ 原生 Character Prompt，人物 Tags 不再并入场景提示词。
+- 同步生成 `characterPrompts`、正面 `char_captions` 与反面 `char_captions`。
+- 新人设卡指令不再需要竖线，支持可选 `--neg` 反面提示词。
+- 旧版字符串人设卡自动兼容为“原 Tags + 空反面提示词”。
+- V5 最多使用 22 张人设卡，V4/V4.5 最多 6 张；V3 自动行内展开。
+- 按要求暂时禁用健康模式，生成过程不会调用 LLM。
+
 ## 1.0.1 - 2026-09-09
 
 - 新增用户级健康模式，可使用 AstrBot 全局 LLM 或自定义 OpenAI 兼容接口。
