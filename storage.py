@@ -19,6 +19,8 @@ class StateStore:
         self._state: dict[str, Any] = {
             "last_requests": {},
             "daily_attempts": {},
+            "character_cards": {},
+            "health_modes": {},
             "statistics": {"attempted": 0, "succeeded": 0, "failed": 0},
         }
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -74,6 +76,51 @@ class StateStore:
     async def statistics(self) -> dict[str, int]:
         async with self._lock:
             return dict(self._state["statistics"])
+
+    async def get_character_cards(self, user_id: str) -> dict[str, str]:
+        async with self._lock:
+            cards = self._state["character_cards"].get(user_id, {})
+            if not isinstance(cards, dict):
+                return {}
+            return {
+                str(name): str(tags)
+                for name, tags in cards.items()
+                if str(name).strip() and str(tags).strip()
+            }
+
+    async def set_character_card(
+        self, user_id: str, name: str, tags: str, *, max_cards: int
+    ) -> bool:
+        async with self._lock:
+            user_cards = self._state["character_cards"].setdefault(user_id, {})
+            if not isinstance(user_cards, dict):
+                user_cards = {}
+                self._state["character_cards"][user_id] = user_cards
+            is_new = name not in user_cards
+            if is_new and len(user_cards) >= max(1, max_cards):
+                raise ValueError(f"每位用户最多保存 {max(1, max_cards)} 张人设卡")
+            user_cards[name] = tags
+            await self._save_locked()
+            return is_new
+
+    async def delete_character_card(self, user_id: str, name: str) -> bool:
+        async with self._lock:
+            user_cards = self._state["character_cards"].get(user_id, {})
+            if not isinstance(user_cards, dict) or name not in user_cards:
+                return False
+            del user_cards[name]
+            await self._save_locked()
+            return True
+
+    async def get_health_mode(self, user_id: str, *, default: bool) -> bool:
+        async with self._lock:
+            value = self._state["health_modes"].get(user_id)
+            return value if isinstance(value, bool) else default
+
+    async def set_health_mode(self, user_id: str, enabled: bool) -> None:
+        async with self._lock:
+            self._state["health_modes"][user_id] = enabled
+            await self._save_locked()
 
     async def write_image(self, user_id: str, data: bytes, extension: str) -> Path:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")

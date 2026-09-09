@@ -17,6 +17,8 @@
 - PNG、WebP、JPEG 与 ZIP 响应解析
 - 输入图片验证和过期输出清理
 - 生成请求不自动重试，避免超时后重复消耗额度
+- 可选健康模式：生成前调用 LLM 删除不健康的提示词片段
+- 用户级人设卡：在提示词中写人设名即可自动展开为对应 Tags
 
 ## 安装
 
@@ -52,6 +54,16 @@ git clone https://github.com/awslYui/astrbot_plugin_nai_image.git
 
 4. 保存并重载插件。
 5. 发送 `/nai_test` 测试连接，再发送 `/nai_account` 查看订阅状态。
+
+### 健康模式配置
+
+健康模式默认关闭，用户可以执行 `/nai_health on` 开启。每次开启状态下的生成会多调用一次 LLM：
+
+- `health_llm_api_key` 留空：使用当前会话配置的 AstrBot 全局默认 LLM。
+- 填写 `health_llm_api_key`：使用 `health_llm_base_url` 和 `health_llm_model` 指定的 OpenAI 兼容接口。
+- `health_fail_closed=true`：审查不可用或返回无效结果时阻止生成，推荐保持开启。
+
+LLM 只能返回需要删除的 Tag 序号，最终提示词由插件本地确定性删除；审查模型不能新增或改写 Tags。API Key 不要发送到聊天中。
 
 AstrBot 的 `secret` 配置只会遮罩 WebUI 显示，不会加密磁盘配置。生产环境推荐使用容器 Secret 或受限环境变量，并限制 AstrBot 配置目录的文件权限。
 
@@ -94,6 +106,36 @@ Precise Reference 会使用配置中的 V4.5 参考模型，并可能产生额�
 /nai_vibe --strength 0.6 --info 1 1girl, city at night
 ```
 
+### 人设卡
+
+人设卡按用户隔离保存。名称可以是中文；设置同名卡会覆盖旧内容。
+
+```text
+/nai_card_set 小画嘉 | 1girl, solo, blue eyes, silver hair, long hair
+/nai_card_list
+/nai_card_show 小画嘉
+/nai 小画嘉, school uniform, classroom
+/nai_card_delete 小画嘉
+```
+
+最后一条生图命令会自动展开为：
+
+```text
+1girl, solo, blue eyes, silver hair, long hair, school uniform, classroom
+```
+
+为避免歧义，人设卡名称不能包含逗号、竖线或换行。当多个名称同时命中时，较长名称优先替换。
+
+### 健康模式
+
+```text
+/nai_health on
+/nai_health status
+/nai_health off
+```
+
+健康审查发生在人设卡展开之后，仅处理正向提示词；负面提示词不会被清理。开启后如果所有正向提示词都被移除，本次生成会被阻止。
+
 ### 通用参数
 
 | 参数 | 说明 | 示例 |
@@ -117,6 +159,11 @@ Precise Reference 会使用配置中的 V4.5 参考模型，并可能产生额�
 | `/nai_cancel` | 取消尚未发送到 NovelAI 的任务 |
 | `/nai_account` | 查看订阅、Anlas 和 V5 用量 |
 | `/nai_help` | 查看帮助 |
+| `/nai_health on\|off\|status` | 管理个人健康模式 |
+| `/nai_card_set 名称 \| tags` | 新增或覆盖个人的人设卡 |
+| `/nai_card_list` | 列出个人的人设卡 |
+| `/nai_card_show 名称` | 查看人设卡内容 |
+| `/nai_card_delete 名称` | 删除人设卡 |
 | `/nai_test` | 管理员测试连接 |
 | `/nai_stats` | 管理员查看生成统计 |
 
@@ -137,7 +184,7 @@ Precise Reference 会使用配置中的 V4.5 参考模型，并可能产生额�
 AstrBot/data/plugin_data/astrbot_plugin_nai_image/
 ```
 
-生成图片默认保留 24 小时后自动删除。`state.json` 只保存统计和上一次成功的文生图参数，不保存参考图片或图生图原图。
+生成图片默认保留 24 小时后自动删除。`state.json` 保存统计、健康模式状态、人设卡和上一次成功的文生图参数，不保存参考图片或图生图原图。
 
 ## 开发与测试
 
@@ -163,4 +210,3 @@ ruff check .
 ## License
 
 MIT
-

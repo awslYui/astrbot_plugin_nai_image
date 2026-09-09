@@ -30,3 +30,23 @@ async def test_store_roundtrip(tmp_path) -> None:
     stats = await store.statistics()
     assert stats == {"attempted": 1, "succeeded": 1, "failed": 0}
 
+
+@pytest.mark.asyncio
+async def test_character_cards_and_health_mode_roundtrip(tmp_path) -> None:
+    store = StateStore(tmp_path)
+    assert await store.set_character_card(
+        "123", "小画嘉", "1girl, blue eyes", max_cards=2
+    )
+    assert not await store.set_character_card(
+        "123", "小画嘉", "1girl, silver hair", max_cards=2
+    )
+    assert await store.get_character_cards("123") == {
+        "小画嘉": "1girl, silver hair"
+    }
+    assert not await store.get_health_mode("123", default=False)
+    await store.set_health_mode("123", True)
+
+    restored = StateStore(tmp_path)
+    assert await restored.get_health_mode("123", default=False)
+    assert await restored.delete_character_card("123", "小画嘉")
+    assert await restored.get_character_cards("123") == {}

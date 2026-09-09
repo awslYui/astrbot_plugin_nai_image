@@ -47,7 +47,7 @@ class NovelAIClient:
             headers={
                 "Authorization": f"Bearer {self._token}",
                 "Accept": "application/zip, image/png, image/webp, application/json",
-                "User-Agent": "astrbot-plugin-nai-image/1.0.0",
+                "User-Agent": "astrbot-plugin-nai-image/1.0.1",
             },
         )
 
@@ -302,4 +302,3 @@ def _parse_anlas(value: Any) -> int | None:
         purchased = _optional_int(value.get("purchasedTrainingSteps")) or 0
         return fixed + purchased
     return _optional_int(value)
-
