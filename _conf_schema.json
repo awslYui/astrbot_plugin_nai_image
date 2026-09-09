@@ -1,0 +1,206 @@
+{
+  "access_token": {
+    "description": "NovelAI Access Token",
+    "type": "string",
+    "default": "",
+    "secret": true,
+    "obvious_hint": true,
+    "hint": "优先推荐通过 NOVELAI_ACCESS_TOKEN 环境变量注入。不要将 Token 发到聊天中。"
+  },
+  "api_base_url": {
+    "description": "NovelAI 图像 API 地址",
+    "type": "string",
+    "default": "https://image.novelai.net"
+  },
+  "owner_only": {
+    "description": "仅限主人使用",
+    "type": "bool",
+    "default": true,
+    "hint": "推荐保持开启，避免共享 NovelAI 订阅账号。"
+  },
+  "owner_ids": {
+    "description": "主人 QQ 号",
+    "type": "list",
+    "default": [],
+    "hint": "至少填写一个 QQ 号，否则主人专用模式下所有生成请求都会被拒绝。"
+  },
+  "allowed_user_ids": {
+    "description": "用户白名单",
+    "type": "list",
+    "default": [],
+    "hint": "仅在关闭主人专用模式时生效。"
+  },
+  "allowed_group_ids": {
+    "description": "群白名单",
+    "type": "list",
+    "default": [],
+    "hint": "仅在关闭主人专用模式时生效；开放给第三方前请确认 NovelAI 账号条款。"
+  },
+  "default_model": {
+    "description": "默认文生图模型",
+    "type": "string",
+    "default": "nai-diffusion-5-curated",
+    "options": [
+      "nai-diffusion-5-curated",
+      "nai-diffusion-5-full",
+      "nai-diffusion-4-5-curated",
+      "nai-diffusion-4-5-full",
+      "nai-diffusion-4-curated",
+      "nai-diffusion-4-full",
+      "nai-diffusion-3"
+    ]
+  },
+  "reference_model": {
+    "description": "Precise Reference 模型",
+    "type": "string",
+    "default": "nai-diffusion-4-5-full",
+    "options": [
+      "nai-diffusion-4-5-curated",
+      "nai-diffusion-4-5-full"
+    ]
+  },
+  "vibe_model": {
+    "description": "Vibe Transfer 模型",
+    "type": "string",
+    "default": "nai-diffusion-4-5-full",
+    "options": [
+      "nai-diffusion-4-5-curated",
+      "nai-diffusion-4-5-full",
+      "nai-diffusion-4-curated",
+      "nai-diffusion-4-full",
+      "nai-diffusion-3"
+    ]
+  },
+  "default_size": {
+    "description": "默认尺寸",
+    "type": "string",
+    "default": "portrait",
+    "options": ["square", "portrait", "landscape"]
+  },
+  "default_steps": {
+    "description": "默认采样步数",
+    "type": "int",
+    "default": 28
+  },
+  "max_steps": {
+    "description": "允许的最大采样步数",
+    "type": "int",
+    "default": 50
+  },
+  "default_scale": {
+    "description": "默认 Prompt Guidance",
+    "type": "float",
+    "default": 5.0
+  },
+  "default_sampler": {
+    "description": "默认采样器",
+    "type": "string",
+    "default": "k_euler_ancestral",
+    "options": [
+      "k_euler_ancestral",
+      "k_euler",
+      "k_dpmpp_2m",
+      "k_dpmpp_2m_sde",
+      "k_dpmpp_sde",
+      "ddim_v3"
+    ]
+  },
+  "default_schedule": {
+    "description": "默认噪声计划",
+    "type": "string",
+    "default": "karras",
+    "options": ["native", "karras", "exponential", "polyexponential"]
+  },
+  "default_negative_prompt": {
+    "description": "默认负面提示词",
+    "type": "text",
+    "default": "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, watermark, signature"
+  },
+  "quality_tags": {
+    "description": "默认启用质量标签",
+    "type": "bool",
+    "default": true
+  },
+  "i2i_strength": {
+    "description": "图生图默认重绘强度",
+    "type": "float",
+    "default": 0.6
+  },
+  "i2i_noise": {
+    "description": "图生图默认噪声",
+    "type": "float",
+    "default": 0.0
+  },
+  "reference_strength": {
+    "description": "Precise Reference 默认强度",
+    "type": "float",
+    "default": 1.0
+  },
+  "reference_fidelity": {
+    "description": "Precise Reference 默认保真度",
+    "type": "float",
+    "default": 0.0
+  },
+  "vibe_strength": {
+    "description": "Vibe Transfer 默认强度",
+    "type": "float",
+    "default": 0.6
+  },
+  "vibe_information": {
+    "description": "Vibe Transfer 默认信息提取量",
+    "type": "float",
+    "default": 1.0
+  },
+  "concurrency": {
+    "description": "全局并发生成数",
+    "type": "int",
+    "default": 1,
+    "hint": "推荐保持为 1。"
+  },
+  "max_queue_size": {
+    "description": "最大队列长度",
+    "type": "int",
+    "default": 20
+  },
+  "user_cooldown": {
+    "description": "用户冷却时间（秒）",
+    "type": "int",
+    "default": 20
+  },
+  "daily_user_limit": {
+    "description": "每人每日请求上限",
+    "type": "int",
+    "default": 50
+  },
+  "owner_bypass_limits": {
+    "description": "主人绕过冷却和每日上限",
+    "type": "bool",
+    "default": false
+  },
+  "request_timeout": {
+    "description": "生成超时时间（秒）",
+    "type": "int",
+    "default": 180
+  },
+  "max_prompt_length": {
+    "description": "提示词最大字符数",
+    "type": "int",
+    "default": 6000
+  },
+  "curated_only": {
+    "description": "仅允许 Curated 模型",
+    "type": "bool",
+    "default": false
+  },
+  "blocked_terms": {
+    "description": "提示词禁用词",
+    "type": "list",
+    "default": []
+  },
+  "output_retention_hours": {
+    "description": "生成图片本地保留时间（小时）",
+    "type": "int",
+    "default": 24
+  }
+}
+

@@ -1,0 +1,15 @@
+name: astrbot_plugin_nai_image
+display_name: NovelAI 生图
+desc: 通过 NovelAI Diffusion 在 AstrBot 中进行文生图、图生图、Precise Reference 和 Vibe Transfer
+short_desc: 安全、可限流的 NovelAI QQ 生图插件
+author: awslYui
+version: 1.0.0
+repo: https://github.com/awslYui/astrbot_plugin_nai_image
+astrbot_version: ">=4.16,<5"
+support_platforms:
+  - aiocqhttp
+  - qq_official
+  - qq_official_webhook
+  - telegram
+  - discord
+
