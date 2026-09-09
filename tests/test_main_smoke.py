@@ -57,5 +57,19 @@ async def test_plugin_entrypoint_imports_and_initializes(monkeypatch, tmp_path) 
     try:
         assert plugin._client is None
         assert plugin._store.data_dir.exists()
+        raw_event = types.SimpleNamespace(
+            message_str="来一张小然老师睡觉的图", message_obj=None
+        )
+        assert (
+            plugin._original_natural_description(raw_event, "改写后的少女描述")
+            == "来一张小然老师睡觉的图"
+        )
+        command_event = types.SimpleNamespace(
+            message_str="/nai_nl 来一张然老师讲课的图", message_obj=None
+        )
+        assert (
+            plugin._original_natural_description(command_event, "")
+            == "来一张然老师讲课的图"
+        )
     finally:
         await plugin.terminate()

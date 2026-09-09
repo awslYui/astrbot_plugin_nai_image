@@ -72,7 +72,7 @@ AstrBot 的 `secret` 配置只会遮罩 WebUI 显示，不会加密磁盘配置�
 画一幅小画嘉站在夏日海边的横图
 ```
 
-LLM 会调用 `generate_novelai_image` 工具。插件会把当前用户可用的人设卡名称交给全局默认 LLM，生成 NovelAI 正面/反面 Tags、选择构图尺寸，再确定性校验并加载存在的人设卡。人设卡 Tags 仍使用 V4+ 独立 Character Prompt，不会混入环境提示词。
+LLM 会调用 `generate_novelai_image` 工具。插件优先读取事件中的原始用户消息，而不是信任外层 LLM 可能改写过的工具参数，再把当前用户可用的人设卡名称交给全局默认 LLM，生成 NovelAI 正面/反面 Tags、选择构图尺寸，并确定性校验、加载存在的人设卡。即使外层 LLM 把“小然老师”改写成“偶像少女”，插件仍会从原始消息中匹配“然老师”。人设卡 Tags 继续使用 V4+ 独立 Character Prompt，不会混入环境提示词。
 
 也可以用显式命令走完全相同的流程：
 

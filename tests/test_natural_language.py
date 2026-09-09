@@ -58,6 +58,30 @@ async def test_generate_keeps_directly_named_character_card() -> None:
     assert "然老师" in provider.calls[0]["prompt"]
 
 
+@pytest.mark.asyncio
+async def test_original_message_restores_card_lost_by_outer_llm() -> None:
+    output = json.dumps(
+        {
+            "positive_prompt": "1girl, sleeping, face on folded arms, desk",
+            "negative_prompt": "",
+            "character_cards": [],
+            "artist_preset": "",
+            "size": "portrait",
+        }
+    )
+    provider = _Provider(output)
+    result = await NaturalPromptGenerator(_Context(provider), {}).generate(
+        "可爱的小个子偶像少女趴在办公桌上小憩",
+        _Event(),
+        card_names=["jk然", "然老师"],
+        artist_names=[],
+        original_description="来一张小然老师睡觉的图",
+    )
+    assert result.character_cards == ["然老师"]
+    assert "来一张小然老师睡觉的图" in provider.calls[0]["prompt"]
+    assert "可爱的小个子偶像少女" not in provider.calls[0]["prompt"]
+
+
 def test_parse_rejects_hallucinated_card() -> None:
     output = json.dumps(
         {

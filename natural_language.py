@@ -41,8 +41,9 @@ class NaturalPromptGenerator:
         *,
         card_names: list[str],
         artist_names: list[str],
+        original_description: str = "",
     ) -> NaturalPromptResult:
-        normalized = description.strip()
+        normalized = original_description.strip() or description.strip()
         if not normalized:
             raise NaturalPromptError("自然语言生图描述不能为空")
         max_length = int(self._config.get("natural_prompt_max_length", 1000))

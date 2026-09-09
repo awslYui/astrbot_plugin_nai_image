@@ -112,7 +112,7 @@ class NovelAIImagePlugin(Star):
         """根据用户的自然语言要求调用 NovelAI 生成图片；当用户要求画图、来张图、生图或生成插画时使用。
 
         Args:
-            description(string): 用户完整的生图需求，保留人物名称、动作、场景、构图和画风要求
+            description(string): 原样复制用户的完整生图需求，不得改写或省略人物名称
         """
         async for result in self._natural_and_run(event, description):
             yield result
@@ -467,11 +467,19 @@ class NovelAIImagePlugin(Star):
                 str(event.get_sender_id())
             )
             artists = parse_artist_presets(self.config.get("artist_presets", []))
+            original_description = self._original_natural_description(
+                event, description
+            )
             generated = await self._natural_prompt_generator.generate(
                 description,
                 event,
                 card_names=list(cards),
                 artist_names=list(artists),
+                original_description=original_description,
+            )
+            logger.info(
+                "[NAI生图] 自然语言人设卡匹配：%s",
+                "、".join(generated.character_cards) or "无",
             )
             natural_config = dict(self.config)
             natural_config["default_size"] = generated.size
@@ -642,6 +650,21 @@ class NovelAIImagePlugin(Star):
             if stripped.lower().startswith(prefix.lower()):
                 return stripped[len(prefix) :].strip()
         return stripped
+
+    @classmethod
+    def _original_natural_description(
+        cls, event: AstrMessageEvent, fallback: str
+    ) -> str:
+        """Prefer the untouched event text over LLM-rewritten tool arguments."""
+        raw = str(getattr(event, "message_str", "") or "").strip()
+        if not raw:
+            message_obj = getattr(event, "message_obj", None)
+            raw = str(getattr(message_obj, "message_str", "") or "").strip()
+        if not raw:
+            return fallback.strip()
+        if raw.lower().startswith(("/nai_nl", "nai_nl")):
+            return cls._command_body(raw, "nai_nl")
+        return raw
 
     @staticmethod
     def _format_duration(seconds: int) -> str:
