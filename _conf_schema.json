@@ -219,8 +219,8 @@
   "default_artist_preset": {
     "description": "默认画师预设名",
     "type": "string",
-    "default": "",
-    "hint": "留空表示默认不添加画师串；必须与 artist_presets 中等号左侧名称一致。"
+    "default": "sushi",
+    "hint": "留空会自动使用画师预设列表第一项；填写 none/off/关闭可禁用默认画师串。"
   },
   "character_card_limit": {
     "description": "每位用户最多保存的人设卡数",

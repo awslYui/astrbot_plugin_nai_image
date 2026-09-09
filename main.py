@@ -483,7 +483,7 @@ class NovelAIImagePlugin(Star):
             )
             natural_config = dict(self.config)
             natural_config["default_size"] = generated.size
-            natural_config["default_artist_preset"] = ""
+            natural_config["default_artist_preset"] = "none"
             parsed = parse_generation_command(
                 generated.positive_prompt,
                 command_name="nai",

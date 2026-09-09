@@ -100,7 +100,7 @@ sushi=sushispin, konya_karasue, 0.9::toosaka_asagi, airfish_(lefko_d), ashima_(r
 soft=artist_a, 0.8::artist_b
 ```
 
-`default_artist_preset` 填预设名后，每次生图默认追加该画师串；留空则不默认追加。单次生成可用 `--artist sushi` 指定，或用 `--artist none` 临时关闭默认画师串。自然语言中明确说“使用 sushi 预设”时，LLM 也可以选择该预设。
+`default_artist_preset` 默认是 `sushi`。留空时也会自动使用 `artist_presets` 列表中的第一项，以兼容已经保存空配置的 v1.0.3；填写 `none`、`off` 或 `关闭` 才会全局禁用默认画师串。单次生成可用 `--artist sushi` 指定，或用 `--artist none` 临时关闭。自然语言中明确说“使用 sushi 预设”时，LLM 也可以选择该预设。
 
 ### 图生图
 

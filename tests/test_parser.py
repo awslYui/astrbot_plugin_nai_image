@@ -90,3 +90,19 @@ def test_artist_none_overrides_default() -> None:
         mode=GenerationMode.TEXT_TO_IMAGE,
     )
     assert parsed.request.prompt == "1girl"
+
+
+def test_blank_default_artist_uses_first_configured_preset() -> None:
+    config = {
+        **DEFAULT_CONFIG,
+        "artist_presets": ["sushi=sushispin, konya_karasue"],
+        "default_artist_preset": "",
+    }
+    parsed = parse_generation_command(
+        "/nai 1girl, classroom",
+        command_name="nai",
+        config=config,
+        mode=GenerationMode.TEXT_TO_IMAGE,
+    )
+    assert parsed.request.prompt == "1girl, classroom, sushispin, konya_karasue"
+    assert parsed.warnings == ["已应用画师预设：sushi"]

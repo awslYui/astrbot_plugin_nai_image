@@ -28,5 +28,27 @@ def test_resolve_default_requested_and_disabled_artist() -> None:
         resolve_artist_preset(config, "missing")
 
 
+def test_blank_default_uses_first_artist_for_existing_configs() -> None:
+    config = {
+        "artist_presets": [
+            "sushi=sushispin, konya_karasue",
+            "soft=artist_a, artist_b",
+        ],
+        "default_artist_preset": "",
+    }
+    assert resolve_artist_preset(config) == (
+        "sushi",
+        "sushispin, konya_karasue",
+    )
+
+
+def test_explicit_disabled_default_does_not_use_first_artist() -> None:
+    config = {
+        "artist_presets": ["sushi=sushispin"],
+        "default_artist_preset": "关闭",
+    }
+    assert resolve_artist_preset(config) is None
+
+
 def test_append_prompt_tags_normalizes_separator() -> None:
     assert append_prompt_tags("1girl, ", " sushispin") == "1girl, sushispin"

@@ -45,11 +45,12 @@ def resolve_artist_preset(
     config: Mapping[str, Any], requested: str | None = None
 ) -> tuple[str, str] | None:
     presets = parse_artist_presets(config.get("artist_presets", []))
-    selected = (
-        str(config.get("default_artist_preset", "")).strip()
-        if requested is None
-        else requested.strip()
-    )
+    if requested is None:
+        selected = str(config.get("default_artist_preset", "")).strip()
+        if not selected and presets:
+            selected = next(iter(presets))
+    else:
+        selected = requested.strip()
     if not selected or selected.lower() in DISABLED_ARTIST_VALUES:
         return None
     if selected not in presets:
