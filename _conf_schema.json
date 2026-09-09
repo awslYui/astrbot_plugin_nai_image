@@ -223,7 +223,7 @@
     "hint": "留空会自动使用画师预设列表第一项；填写 none/off/关闭可禁用默认画师串。"
   },
   "character_card_limit": {
-    "description": "每位用户最多保存的人设卡数",
+    "description": "全局最多保存的人设卡数",
     "type": "int",
     "default": 50
   },
