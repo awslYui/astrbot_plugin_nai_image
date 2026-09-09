@@ -21,6 +21,7 @@ class StateStore:
             "last_requests": {},
             "daily_attempts": {},
             "character_cards": {},
+            "global_character_cards": {},
             "health_modes": {},
             "statistics": {"attempted": 0, "succeeded": 0, "failed": 0},
         }
@@ -78,53 +79,78 @@ class StateStore:
         async with self._lock:
             return dict(self._state["statistics"])
 
-    async def get_character_cards(self, user_id: str) -> dict[str, CharacterCard]:
+    async def get_character_cards(self) -> dict[str, CharacterCard]:
         async with self._lock:
-            cards = self._state["character_cards"].get(user_id, {})
-            if not isinstance(cards, dict):
-                return {}
-            result: dict[str, CharacterCard] = {}
-            for raw_name, raw_card in cards.items():
-                name = str(raw_name).strip()
-                if not name:
-                    continue
-                if isinstance(raw_card, str) and raw_card.strip():
-                    result[name] = CharacterCard(positive=raw_card.strip())
-                elif isinstance(raw_card, dict):
-                    positive = str(
-                        raw_card.get("positive", raw_card.get("tags", ""))
-                    ).strip()
-                    negative = str(raw_card.get("negative", "")).strip()
-                    if positive:
-                        result[name] = CharacterCard(positive, negative)
+            cards, migrated = self._global_character_cards_locked()
+            if migrated:
+                await self._save_locked()
+            result = self._normalize_character_cards(cards)
             return result
 
     async def set_character_card(
-        self, user_id: str, name: str, card: CharacterCard, *, max_cards: int
+        self, name: str, card: CharacterCard, *, max_cards: int
     ) -> bool:
         async with self._lock:
-            user_cards = self._state["character_cards"].setdefault(user_id, {})
-            if not isinstance(user_cards, dict):
-                user_cards = {}
-                self._state["character_cards"][user_id] = user_cards
-            is_new = name not in user_cards
-            if is_new and len(user_cards) >= max(1, max_cards):
-                raise ValueError(f"每位用户最多保存 {max(1, max_cards)} 张人设卡")
-            user_cards[name] = {
+            cards, _ = self._global_character_cards_locked()
+            is_new = name not in cards
+            if is_new and len(cards) >= max(1, max_cards):
+                raise ValueError(f"全局最多保存 {max(1, max_cards)} 张人设卡")
+            cards[name] = {
                 "positive": card.positive,
                 "negative": card.negative,
             }
             await self._save_locked()
             return is_new
 
-    async def delete_character_card(self, user_id: str, name: str) -> bool:
+    async def delete_character_card(self, name: str) -> bool:
         async with self._lock:
-            user_cards = self._state["character_cards"].get(user_id, {})
-            if not isinstance(user_cards, dict) or name not in user_cards:
+            cards, _ = self._global_character_cards_locked()
+            if name not in cards:
                 return False
-            del user_cards[name]
+            del cards[name]
             await self._save_locked()
             return True
+
+    def _global_character_cards_locked(self) -> tuple[dict[str, Any], bool]:
+        """Return the shared card store, importing cards from the old user buckets."""
+        cards = self._state.get("global_character_cards")
+        if not isinstance(cards, dict):
+            cards = {}
+            self._state["global_character_cards"] = cards
+
+        legacy = self._state.get("character_cards")
+        if not isinstance(legacy, dict) or not legacy:
+            return cards, False
+
+        for user_cards in legacy.values():
+            if not isinstance(user_cards, dict):
+                continue
+            for raw_name, raw_card in user_cards.items():
+                name = str(raw_name).strip()
+                if name and name not in cards:
+                    cards[name] = raw_card
+        self._state["character_cards"] = {}
+        return cards, True
+
+    @staticmethod
+    def _normalize_character_cards(
+        cards: dict[str, Any],
+    ) -> dict[str, CharacterCard]:
+        result: dict[str, CharacterCard] = {}
+        for raw_name, raw_card in cards.items():
+            name = str(raw_name).strip()
+            if not name:
+                continue
+            if isinstance(raw_card, str) and raw_card.strip():
+                result[name] = CharacterCard(positive=raw_card.strip())
+            elif isinstance(raw_card, dict):
+                positive = str(
+                    raw_card.get("positive", raw_card.get("tags", ""))
+                ).strip()
+                negative = str(raw_card.get("negative", "")).strip()
+                if positive:
+                    result[name] = CharacterCard(positive, negative)
+        return result
 
     async def get_health_mode(self, user_id: str, *, default: bool) -> bool:
         async with self._lock:
