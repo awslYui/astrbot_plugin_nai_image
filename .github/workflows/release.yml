@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: ["Test"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Create version release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version:[[:space:]]*//p' metadata.yaml | tr -d '\"')"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version in metadata.yaml: $version" >&2
+            exit 1
+          fi
+          tag="v$version"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists"
+            exit 0
+          fi
+          archive="astrbot_plugin_nai_image-$tag.zip"
+          git archive --format=zip --prefix=astrbot_plugin_nai_image/ \
+            --output="$archive" "$RELEASE_SHA"
+          gh release create "$tag" "$archive" \
+            --target "$RELEASE_SHA" \
+            --title "$tag" \
+            --generate-notes
