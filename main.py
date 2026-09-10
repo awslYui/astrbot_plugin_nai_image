@@ -17,9 +17,14 @@ from .artist_presets import (
     parse_artist_presets,
     resolve_artist_preset,
 )
+from .card_layering import CardLayeringError, CharacterCardLayerer
 from .character_cards import (
+    CARD_LAYERS,
     expand_character_cards,
+    parse_card_part_set_command,
     parse_card_set_command,
+    replace_card_layer,
+    resolve_shot,
     validate_card,
 )
 from .image_utils import normalize_image_base64
@@ -36,7 +41,7 @@ from .request_parser import parse_generation_command
 from .storage import StateStore
 
 PLUGIN_NAME = "astrbot_plugin_nai_image"
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 
 
 @register(
@@ -70,6 +75,7 @@ class NovelAIImagePlugin(Star):
         data_dir = Path("data") / "plugin_data" / PLUGIN_NAME
         self._store = StateStore(data_dir)
         self._natural_prompt_generator = NaturalPromptGenerator(context, self.config)
+        self._card_layerer = CharacterCardLayerer(context)
         self._last_started: dict[str, float] = {}
         self._cleanup_task: asyncio.Task[None] | None = None
         try:
@@ -241,24 +247,30 @@ class NovelAIImagePlugin(Star):
             return
         body = self._command_body(event.message_str or "", "nai_card_set")
         try:
-            name, positive, negative = parse_card_set_command(body)
+            name, positive, negative, auto_layer = parse_card_set_command(body)
             name, card = validate_card(
                 name,
                 positive,
                 negative,
                 max_tags_length=int(self.config.get("character_card_max_tags_length", 2000)),
             )
+            should_layer = auto_layer and bool(
+                self.config.get("character_card_auto_layer", True)
+            )
+            if should_layer:
+                card = await self._card_layerer.layer(name, card, event)
             created = await self._store.set_character_card(
                 name,
                 card,
                 max_cards=int(self.config.get("character_card_limit", 50)),
             )
-        except ValueError as exc:
+        except (CardLayeringError, ValueError) as exc:
             yield event.plain_result(f"❌ {exc}")
             return
         yield event.plain_result(
             f"✅ 已{'新增' if created else '更新'}人设卡：{name}\n"
             f"反面提示词：{'已设置' if card.negative else '留空'}\n"
+            f"分层：{'LLM 自动完成' if card.is_layered else '未启用'}\n"
             "以后在生图提示词中写入该名称即可调用 Character Prompt。"
         )
 
@@ -289,10 +301,61 @@ class NovelAIImagePlugin(Star):
             yield event.plain_result("❌ 未找到该人设卡，用 /nai_card_list 查看名称")
             return
         card = cards[name]
-        yield event.plain_result(
-            f"人设卡：{name}\n正面：{card.positive}\n"
-            f"反面：{card.negative or '（空）'}"
-        )
+        yield event.plain_result(self._format_card(name, card))
+
+    @filter.command("nai_card_relayer")
+    async def nai_card_relayer(self, event: AstrMessageEvent):
+        """使用全局 LLM 重新划分现有人设卡。"""
+        denied = self._permission_error(event)
+        if denied:
+            yield event.plain_result(denied)
+            return
+        name = self._command_body(event.message_str or "", "nai_card_relayer")
+        cards = await self._store.get_character_cards()
+        if not name or name not in cards:
+            yield event.plain_result("❌ 未找到该人设卡，用 /nai_card_list 查看名称")
+            return
+        try:
+            card = await self._card_layerer.layer(name, cards[name], event)
+            await self._store.set_character_card(
+                name,
+                card,
+                max_cards=int(self.config.get("character_card_limit", 50)),
+            )
+        except (CardLayeringError, ValueError) as exc:
+            yield event.plain_result(f"❌ {exc}")
+            return
+        yield event.plain_result(f"✅ 已由 LLM 重新分层人设卡：{name}\n" + self._format_card(name, card, include_title=False))
+
+    @filter.command("nai_card_part_set")
+    async def nai_card_part_set(self, event: AstrMessageEvent):
+        """人工覆盖人设卡的一个可见区域分层。"""
+        denied = self._permission_error(event)
+        if denied:
+            yield event.plain_result(denied)
+            return
+        body = self._command_body(event.message_str or "", "nai_card_part_set")
+        cards = await self._store.get_character_cards()
+        try:
+            name, layer, positive, negative = parse_card_part_set_command(body)
+            if name not in cards:
+                raise ValueError("未找到该人设卡，用 /nai_card_list 查看名称")
+            card = replace_card_layer(cards[name], layer, positive, negative)
+            validate_card(
+                name,
+                card.positive,
+                card.negative,
+                max_tags_length=int(self.config.get("character_card_max_tags_length", 2000)),
+            )
+            await self._store.set_character_card(
+                name,
+                card,
+                max_cards=int(self.config.get("character_card_limit", 50)),
+            )
+        except ValueError as exc:
+            yield event.plain_result(f"❌ {exc}")
+            return
+        yield event.plain_result(f"✅ 已更新人设卡 {name} 的 {layer} 分层")
 
     @filter.command("nai_card_delete")
     async def nai_card_delete(self, event: AstrMessageEvent):
@@ -489,6 +552,7 @@ class NovelAIImagePlugin(Star):
                 str(self.config.get("default_negative_prompt", "")),
                 generated.negative_prompt,
             )
+            parsed.request.shot = generated.shot
             selected_artist = resolve_artist_preset(
                 self.config, generated.artist_preset or None
             )
@@ -575,8 +639,10 @@ class NovelAIImagePlugin(Star):
     ) -> None:
         cards = await self._store.get_character_cards()
         structured = is_v4_plus(request.model)
+        shot = resolve_shot(request.shot, request.prompt)
+        request.shot = shot
         expansion = expand_character_cards(
-            request.prompt, cards, structured=structured
+            request.prompt, cards, structured=structured, shot=shot
         )
         request.prompt = expansion.prompt
         request.character_prompts = expansion.character_prompts
@@ -590,11 +656,13 @@ class NovelAIImagePlugin(Star):
                 warnings.append(
                     "已加载独立 Character Prompt："
                     + "、".join(expansion.matched_names)
+                    + f"（镜头分层：{shot}）"
                 )
             else:
                 warnings.append(
                     "V3 不支持 Character Prompt，已行内展开："
                     + "、".join(expansion.matched_names)
+                    + f"（镜头分层：{shot}）"
                 )
 
         max_length = int(self.config.get("max_prompt_length", 6000))
@@ -604,6 +672,25 @@ class NovelAIImagePlugin(Star):
         )
         if total_length > max_length:
             raise ValueError(f"提示词与人设卡总长度不能超过 {max_length} 个字符")
+
+    @staticmethod
+    def _format_card(
+        name: str, card: Any, *, include_title: bool = True
+    ) -> str:
+        if not card.is_layered:
+            prefix = f"人设卡：{name}\n" if include_title else ""
+            return (
+                f"{prefix}分层：未启用\n正面：{card.positive}\n"
+                f"反面：{card.negative or '（空）'}"
+            )
+        lines = [f"人设卡：{name}"] if include_title else []
+        lines.append("分层：已启用")
+        for layer in CARD_LAYERS:
+            positive = card.positive_layers.get(layer, "") or "（空）"
+            negative = card.negative_layers.get(layer, "") or "（空）"
+            lines.append(f"[{layer}] 正面：{positive}")
+            lines.append(f"[{layer}] 反面：{negative}")
+        return "\n".join(lines)
 
     @staticmethod
     async def _get_message_image_b64(event: AstrMessageEvent) -> str | None:
@@ -680,7 +767,7 @@ class NovelAIImagePlugin(Star):
     @staticmethod
     def _help_text() -> str:
         return (
-            "NAI 生图插件 v1.0.4\n\n"
+            "NAI 生图插件 v1.0.5\n\n"
             "自然语言：直接对机器人说‘来张……的图’，或 /nai_nl <描述>\n"
             "文生图：/nai <提示词>\n"
             "图生图：图片 + /nai_i2i <提示词>\n"
@@ -690,12 +777,13 @@ class NovelAIImagePlugin(Star):
             "--model v5c|v5f|v45c|v45f|v4c|v4f|v3\n"
             "--size square|portrait|landscape|832x1216\n"
             "--seed 123  --steps 28  --scale 5\n"
-            "--neg \"负面提示词\"  --artist 预设名  --no-quality\n"
+            "--neg \"负面提示词\"  --artist 预设名  --shot 镜头  --no-quality\n"
             "图生图：--strength 0.6 --noise 0\n"
             "精准参考：--type character|style|both --strength 1 --fidelity 0\n"
             "画风迁移：--strength 0.6 --info 1\n\n"
             "人设卡：/nai_card_set 名称 正面Tags [--neg 反面Tags]\n"
-            "/nai_card_list /nai_card_show /nai_card_delete\n"
+            "/nai_card_relayer /nai_card_part_set /nai_card_list\n"
+            "/nai_card_show /nai_card_delete\n"
             "健康模式：暂时禁用\n\n"
             "其他：/nai_again /nai_status /nai_cancel /nai_account\n"
             "管理：/nai_test /nai_stats"

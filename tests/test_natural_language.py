@@ -44,6 +44,7 @@ async def test_generate_keeps_directly_named_character_card() -> None:
             "character_cards": [],
             "artist_preset": "",
             "size": "landscape",
+            "shot": "upper",
         }
     )
     provider = _Provider(output)
@@ -55,6 +56,7 @@ async def test_generate_keeps_directly_named_character_card() -> None:
     )
     assert result.character_cards == ["然老师"]
     assert result.size == "landscape"
+    assert result.shot == "upper"
     assert "然老师" in provider.calls[0]["prompt"]
 
 
@@ -67,6 +69,7 @@ async def test_original_message_restores_card_lost_by_outer_llm() -> None:
             "character_cards": [],
             "artist_preset": "",
             "size": "portrait",
+            "shot": "full",
         }
     )
     provider = _Provider(output)
@@ -78,6 +81,7 @@ async def test_original_message_restores_card_lost_by_outer_llm() -> None:
         original_description="来一张小然老师睡觉的图",
     )
     assert result.character_cards == ["然老师"]
+    assert result.shot == "full"
     assert "来一张小然老师睡觉的图" in provider.calls[0]["prompt"]
     assert "可爱的小个子偶像少女" not in provider.calls[0]["prompt"]
 
@@ -107,3 +111,25 @@ def test_parse_accepts_fenced_json_and_artist() -> None:
     )
     assert result.artist_preset == "sushi"
     assert result.character_cards == ["然老师"]
+
+
+@pytest.mark.asyncio
+async def test_original_explicit_shot_overrides_llm_shot() -> None:
+    output = json.dumps(
+        {
+            "positive_prompt": "sleeping, desk, upper body",
+            "negative_prompt": "",
+            "character_cards": ["然老师"],
+            "artist_preset": "",
+            "size": "portrait",
+            "shot": "upper",
+        }
+    )
+    result = await NaturalPromptGenerator(_Context(_Provider(output)), {}).generate(
+        "改写后的描述",
+        _Event(),
+        card_names=["然老师"],
+        artist_names=[],
+        original_description="然老师趴桌睡觉的近景侧脸图",
+    )
+    assert result.shot == "closeup"

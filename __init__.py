@@ -1,3 +1,3 @@
 """AstrBot NovelAI image generation plugin."""
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"

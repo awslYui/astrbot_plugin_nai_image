@@ -87,3 +87,21 @@ async def test_legacy_user_cards_become_shared(tmp_path) -> None:
     }
     restored = StateStore(tmp_path)
     assert await restored.get_character_cards() == cards
+
+
+@pytest.mark.asyncio
+async def test_layered_character_card_roundtrip(tmp_path) -> None:
+    store = StateStore(tmp_path)
+    card = CharacterCard(
+        "diana, blue eyes, white pumps",
+        "missing glasses",
+        positive_layers={
+            "core": "diana",
+            "face": "blue eyes",
+            "lower": "white pumps",
+        },
+        negative_layers={"face": "missing glasses"},
+    )
+    await store.set_character_card("然老师", card, max_cards=10)
+    restored = StateStore(tmp_path)
+    assert (await restored.get_character_cards())["然老师"] == card

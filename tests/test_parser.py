@@ -31,6 +31,26 @@ def test_parse_text_to_image() -> None:
     assert request.seed == 42
 
 
+def test_parse_manual_shot_override() -> None:
+    parsed = parse_generation_command(
+        "/nai --shot closeup 然老师, sleeping",
+        command_name="nai",
+        config=DEFAULT_CONFIG,
+        mode=GenerationMode.TEXT_TO_IMAGE,
+    )
+    assert parsed.request.shot == "closeup"
+
+
+def test_reject_unknown_shot() -> None:
+    with pytest.raises(ValueError, match="--shot"):
+        parse_generation_command(
+            "/nai --shot aerial 1girl",
+            command_name="nai",
+            config=DEFAULT_CONFIG,
+            mode=GenerationMode.TEXT_TO_IMAGE,
+        )
+
+
 def test_precise_reference_defaults_to_v45() -> None:
     parsed = parse_generation_command(
         "/nai_ref --type character 1girl",

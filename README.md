@@ -18,7 +18,7 @@
 - 输入图片验证和过期输出清理
 - 生成请求不自动重试，避免超时后重复消耗额度
 - NovelAI 原生 Character Prompt 人设卡，人物 Tags 与环境提示词分离
-- 全局共享人设卡正面/反面 Tags、自动位置和旧版数据兼容
+- 全局共享人设卡、LLM 自动可见区域分层、人工调整和旧版数据兼容
 - 普通对话自然语言生图：自动生成 NovelAI 正面/反面 Tags 并匹配人设卡
 - WebUI 可配置多个命名画师串预设，支持默认预设和按次选择
 
@@ -57,7 +57,7 @@ git clone https://github.com/awslYui/astrbot_plugin_nai_image.git
 4. 保存并重载插件。
 5. 发送 `/nai_test` 测试连接，再发送 `/nai_account` 查看订阅状态。
 
-> 健康模式仍暂时禁用。v1.0.4 只在自然语言生图时调用 AstrBot 全局 LLM，将描述转换为 NovelAI Tags；`/nai` Tags 指令不会调用 LLM。
+> 健康模式仍暂时禁用。v1.0.5 会在自然语言生图和人设卡自动分层时调用 AstrBot 全局 LLM；NovelAI 生成本身不经过 LLM。
 
 AstrBot 的 `secret` 配置只会遮罩 WebUI 显示，不会加密磁盘配置。生产环境推荐使用容器 Secret 或受限环境变量，并限制 AstrBot 配置目录的文件权限。
 
@@ -72,7 +72,7 @@ AstrBot 的 `secret` 配置只会遮罩 WebUI 显示，不会加密磁盘配置�
 画一幅小画嘉站在夏日海边的横图
 ```
 
-LLM 会调用 `generate_novelai_image` 工具。插件优先读取事件中的原始用户消息，而不是信任外层 LLM 可能改写过的工具参数，再把全局共享的人设卡名称交给全局默认 LLM，生成 NovelAI 正面/反面 Tags、选择构图尺寸，并确定性校验、加载存在的人设卡。即使外层 LLM 把“小然老师”改写成“偶像少女”，插件仍会从原始消息中匹配“然老师”。人设卡 Tags 继续使用 V4+ 独立 Character Prompt，不会混入环境提示词。
+LLM 会调用 `generate_novelai_image` 工具。插件优先读取事件中的原始用户消息，而不是信任外层 LLM 可能改写过的工具参数，再把全局共享的人设卡名称交给全局默认 LLM，生成 NovelAI 正面/反面 Tags、选择构图尺寸、判断 `shot` 镜头并加载存在的人设卡。即使外层 LLM 把“小然老师”改写成“偶像少女”，插件仍会从原始消息中匹配“然老师”；原文明确写了“近景、上半身、腿部、全身”等镜头时，也会覆盖 LLM 的不同判断。
 
 也可以用显式命令走完全相同的流程：
 
@@ -89,6 +89,7 @@ LLM 会调用 `generate_novelai_image` 工具。插件优先读取事件中的�
 /nai --model v5f --size landscape cinematic landscape, sunset
 /nai --seed 123456 --neg "lowres, bad hands" 1girl, portrait
 /nai --artist sushi 1girl, classroom
+/nai --shot closeup 然老师, sleeping at desk, side profile
 ```
 
 ### 画师预设
@@ -133,31 +134,46 @@ Precise Reference 会使用配置中的 V4.5 参考模型，并可能产生额�
 
 ### 人设卡
 
-人设卡为全局共享：任何可使用插件的用户设置后，其他用户也可以直接调用；设置同名卡会覆盖旧内容。名称可以是中文；指令不需要竖线，第一个参数是人设名，后面是正面 Tags；反面 Tags 使用可选的 `--neg` 参数。
+人设卡为全局共享：任何可使用插件的用户设置后，其他用户也可以直接调用；设置同名卡会覆盖旧内容。新建卡默认交给 AstrBot 全局 LLM 自动分层。LLM 只能返回每个原始 Tag 的序号归属，插件会检查无遗漏、无重复后用原文回填，因此不会改写 `{{权重}}`、角色名或词条。
 
 ```text
 /nai_card_set 小画嘉 1girl, solo, blue eyes, silver hair, long hair
 /nai_card_set 小画嘉 1girl, solo, blue eyes, silver hair --neg bad hands, extra fingers
 /nai_card_set "小画嘉 夏装" 1girl, summer dress, silver hair
+/nai_card_set 临时卡 1girl, red hair --no-auto-layer
 /nai_card_list
 /nai_card_show 小画嘉
+/nai_card_relayer 小画嘉
+/nai_card_part_set 小画嘉 lower pleated skirt, white socks, brown shoes --neg wrong shoes
 /nai 小画嘉, school uniform, classroom
 /nai_card_delete 小画嘉
 ```
 
-反面提示词不填写时会保存为空。包含空格的人设名需要加引号。
+反面提示词不填写时会保存为空。包含空格的人设名需要加引号。如果全局 LLM 不可用，自动分层会明确报错；可修复 LLM 配置，或追加 `--no-auto-layer` 保存传统未分层卡。
+
+自动分层包括：
+
+| 分层 | 内容 | 加载镜头 |
+|---|---|---|
+| `core` | 角色身份及极少量通用辨识信息 | 所有镜头 |
+| `face` | 头发、眼睛、眼镜、脸型和头饰 | `closeup`、`upper`、`full` |
+| `upper` | 上衣、胸肩、手臂和上半身饰品 | `upper`、`full` |
+| `lower` | 裙摆、腿部、袜鞋和下半身饰品 | `lower`、`full` |
+| `full` | 身高、腿长、整体比例和完整服装轮廓 | 仅 `full` |
+
+`/nai_card_part_set 人设名 分层 正面Tags [--neg 反面Tags]` 会完整覆盖该分层，其他层保持不变。`/nai_card_relayer 人设名` 可重新自动整理全部原始 Tags。
 
 对于 V4、V4.5 和 V5，最后一条生图命令会生成独立的人物槽：
 
 ```text
 主提示词：character 1, school uniform, classroom
-Character 1 正面：1girl, solo, blue eyes, silver hair, long hair
+Character 1 正面：根据 `--shot` 选择后的人物 Tags
 Character 1 反面：（空或用户填写的 --neg 内容）
 ```
 
-人物 Tags 不会再直接拼进场景提示词，从而减少对背景、构图和环境的污染。多个人设会建立多个 Character Prompt 并自动横向分配位置；V5 最多 22 个，V4/V4.5 最多 6 个。V3 不支持该功能，因此会自动退回原来的行内展开方式。
+人物 Tags 不会再直接拼进场景提示词，从而减少对背景、构图和环境的污染。`--shot auto` 会从提示词识别镜头，无法判断时为兼容旧行为使用 `full`；自然语言流程会直接提供镜头类型。多个人设会建立多个 Character Prompt 并自动横向分配位置；V5 最多 22 个，V4/V4.5 最多 6 个。V3 不支持 Character Prompt，但仍会按镜头选层后行内展开。
 
-旧版 v1.0.1 已保存的人设卡会自动读取为正面 Tags，反面 Tags 留空，无需重新创建。
+旧版人设卡无需重新创建，仍会完整加载。建议执行 `/nai_card_relayer 人设名` 升级为镜头分层卡。
 
 ### 健康模式
 
@@ -176,6 +192,7 @@ Character 1 反面：（空或用户填写的 --neg 内容）
 | `--schedule` | 噪声计划 | `--schedule karras` |
 | `--neg` | 负面提示词 | 多词内容需要加引号 |
 | `--artist` | 画师预设 | `--artist sushi`；`--artist none` 关闭默认预设 |
+| `--shot` | 人设卡镜头分层 | `auto`、`closeup`、`upper`、`lower`、`full` |
 | `--no-quality` | 关闭自动质量标签 | 无参数值 |
 
 其他命令：
@@ -189,7 +206,9 @@ Character 1 反面：（空或用户填写的 --neg 内容）
 | `/nai_account` | 查看订阅、Anlas 和 V5 用量 |
 | `/nai_help` | 查看帮助 |
 | `/nai_health` | 查看健康模式禁用状态 |
-| `/nai_card_set 名称 正面Tags [--neg 反面Tags]` | 新增或覆盖全局共享人设卡 |
+| `/nai_card_set 名称 正面Tags [--neg 反面Tags]` | 新增人设卡并默认使用 LLM 自动分层 |
+| `/nai_card_relayer 名称` | 使用 LLM 重新分层现有人设卡 |
+| `/nai_card_part_set 名称 分层 正面Tags [--neg 反面Tags]` | 人工覆盖一个分层 |
 | `/nai_card_list` | 列出全局共享人设卡 |
 | `/nai_card_show 名称` | 查看人设卡内容 |
 | `/nai_card_delete 名称` | 删除人设卡 |
@@ -213,7 +232,7 @@ Character 1 反面：（空或用户填写的 --neg 内容）
 AstrBot/data/plugin_data/astrbot_plugin_nai_image/
 ```
 
-生成图片默认保留 24 小时后自动删除。`state.json` 保存统计、人设卡和上一次成功的文生图参数，不保存参考图片或图生图原图。旧健康模式状态可能仍保留在文件中，但 v1.0.4 不会读取或执行。
+生成图片默认保留 24 小时后自动删除。`state.json` 保存统计、人设卡和上一次成功的文生图参数，不保存参考图片或图生图原图。旧健康模式状态可能仍保留在文件中，但 v1.0.5 不会读取或执行。
 
 ## 开发与测试
 

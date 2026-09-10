@@ -49,6 +49,7 @@ class GenerationRequest:
     reference_fidelity: float = 0.0
     vibe_strength: float = 0.6
     vibe_information: float = 1.0
+    shot: str = "auto"
     character_prompts: list[CharacterPrompt] = field(default_factory=list)
 
     def safe_dict(self) -> dict[str, Any]:

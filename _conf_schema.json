@@ -227,6 +227,12 @@
     "type": "int",
     "default": 50
   },
+  "character_card_auto_layer": {
+    "description": "新建人设卡时使用 LLM 自动分层",
+    "type": "bool",
+    "default": true,
+    "hint": "使用 AstrBot 当前全局 LLM，只让模型返回原始 Tag 的分层序号，不允许改写 Tags。单次可用 --no-auto-layer 跳过。"
+  },
   "character_card_max_tags_length": {
     "description": "单张人设卡 Tags 最大字符数",
     "type": "int",

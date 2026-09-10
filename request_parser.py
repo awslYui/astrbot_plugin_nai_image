@@ -4,6 +4,7 @@ import shlex
 from typing import Any
 
 from .artist_presets import append_prompt_tags, resolve_artist_preset
+from .character_cards import normalize_shot
 from .models import GenerationMode, GenerationRequest, ParsedCommand, ReferenceType
 from .presets import (
     SUPPORTED_SAMPLERS,
@@ -30,6 +31,7 @@ VALUE_OPTIONS = {
     "--fidelity",
     "--info",
     "--artist",
+    "--shot",
 }
 
 
@@ -199,6 +201,7 @@ def parse_generation_command(
             0.0,
             1.0,
         ),
+        shot=normalize_shot(str(options.get("--shot", "auto"))),
     )
     if request.width * request.height > 1_048_576:
         warnings.append("当前尺寸超过约一百万像素，可能产生额外 Anlas 消耗")

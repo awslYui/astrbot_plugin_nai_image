@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .character_cards import CharacterCard
+from .character_cards import CARD_LAYERS, CharacterCard
 from .models import GenerationRequest
 
 
@@ -98,6 +98,8 @@ class StateStore:
             cards[name] = {
                 "positive": card.positive,
                 "negative": card.negative,
+                "positive_layers": card.positive_layers,
+                "negative_layers": card.negative_layers,
             }
             await self._save_locked()
             return is_new
@@ -148,9 +150,30 @@ class StateStore:
                     raw_card.get("positive", raw_card.get("tags", ""))
                 ).strip()
                 negative = str(raw_card.get("negative", "")).strip()
+                positive_layers = StateStore._normalize_layers(
+                    raw_card.get("positive_layers")
+                )
+                negative_layers = StateStore._normalize_layers(
+                    raw_card.get("negative_layers")
+                )
                 if positive:
-                    result[name] = CharacterCard(positive, negative)
+                    result[name] = CharacterCard(
+                        positive,
+                        negative,
+                        positive_layers=positive_layers,
+                        negative_layers=negative_layers,
+                    )
         return result
+
+    @staticmethod
+    def _normalize_layers(value: Any) -> dict[str, str]:
+        if not isinstance(value, dict):
+            return {}
+        return {
+            str(layer): str(tags).strip()
+            for layer, tags in value.items()
+            if str(layer) in CARD_LAYERS and isinstance(tags, str) and tags.strip()
+        }
 
     async def get_health_mode(self, user_id: str, *, default: bool) -> bool:
         async with self._lock:
